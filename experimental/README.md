@@ -1,13 +1,5 @@
 # Experimental source snapshots
 
-The v0.4 code and tests supplied for integration are being kept separate from the current root prototype while their completeness is checked.
+The supplied Custos v0.4 source, tests, and pre-fix red-team report are staged under `custos-v0.4-snapshot/`, separately from the root prototype.
 
-The intended packaged layout is provided in **custos-v0.4-snapshot.zip** in this directory. It contains the supplied `custos/` modules, tests, project metadata, a red-team report, and an integration-status note.
-
-## Status: incomplete, not runnable
-
-The supplied files import modules that were not included in the uploads: `canonical.py`, `crypto.py`, `models.py`, `access.py`, `control_plane.py`, `audit.py`, `gateway.py`, `workspace.py`, `governance.py`, `bootstrap.py`, and `cli.py`. Therefore, the test suite has **not** been run, and the configured `custos` command cannot resolve yet.
-
-Python syntax checks passed for the supplied modules and end-to-end test. This is not evidence of integration correctness or production security.
-
-The included `red_team_round3_before_fix.txt` is a pre-fix report with unresolved findings; it must not be read as proof that those findings were mitigated.
+Read that directory's `README.md` and `INTEGRATION_STATUS.md` before running or merging anything. The snapshot is incomplete because several required modules were not included in the supplied archives. The tests have not been run; syntax checks are not integration or security validation.
