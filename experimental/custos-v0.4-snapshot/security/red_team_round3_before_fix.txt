@@ -1,0 +1,18 @@
+VULNERABLE [medium] D1 ambiguous request framing (two Content-Length headers)                                         
+           conflicting Content-Length headers -> HTTP 200 (a front proxy using the other value desynchronises)
+VULNERABLE [low   ] D2 deeply nested JSON (parser recursion) must be a clean 400                                      
+           40 KB of nesting -> HTTP 500 (500 means the exception path ran and logged a traceback)
+VULNERABLE [medium] D3 replay of a captured admin 'pending' call (leaks parked request parameters)                    
+           captured authenticated call replayed -> first 200, replay 200
+VULNERABLE [medium] D4 exhaust the handshake challenge table from one address                                         
+           after 1100 challenges from one address, an honest client gets HTTP 503
+HELD       [medium] D5 thread exhaustion with idle connections                                                        
+           500 idle connections -> 300 extra server threads
+VULNERABLE [high  ] D6 attest a cherry-picked time window that excludes the violations                                
+           2 egress actions really happened; a 'zero egress' attestation over an empty window -> verifier says ok=True
+VULNERABLE [high  ] D7 present a stale attestation after later violations (old head)                                  
+           old attestation 'at most 5 egress' presented with 7 real; verifier ok=True (entries since: 20)
+ACCEPTED   [info  ] D8 an agent running as the same OS user reads the server's signing keys                           
+           read secrets/audit_signing.key (64 chars) as the same user: file modes only separate DIFFERENT users. Run the server under its own account / container (see THREAT_MODEL).
+
+6 vulnerable / 27 attacks  (2 accepted documented risk, 0 harness errors)
