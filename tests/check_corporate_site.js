@@ -78,7 +78,7 @@ function luminance(hex) {
 }
 const contrast = 1.05 / (luminance(accentMatch[1]) + 0.05);
 if (contrast < 4.5) throw new Error("Dark accent fails 4.5:1 contrast against white.");
-if (!css.includes(".btn,.header-cta,.run-case{background:var(--accent-dark)")) {
+if (!css.includes(".btn:not(.btn-secondary):not(.btn-dark),.header-cta,.run-case{background:var(--accent-dark)")) {
   throw new Error("Primary controls must use the contrast-safe dark accent.");
 }
 
