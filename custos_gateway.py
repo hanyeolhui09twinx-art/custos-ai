@@ -223,6 +223,7 @@ class DispatchPermit:
     issued_at: float
     expires_at: float
     nonce: str
+    key_id: str
     signature: str
 
 
@@ -234,6 +235,8 @@ class DispatchAuthority:
         clock: Callable[[], float] = time.time,
         ttl_seconds: float = 15.0,
         signing_key: bytes | None = None,
+        signing_keys: dict[str, bytes] | None = None,
+        active_key_id: str = "default",
     ) -> None:
         if (
             isinstance(ttl_seconds, bool)
@@ -242,11 +245,33 @@ class DispatchAuthority:
             or ttl_seconds <= 0
         ):
             raise ValueError("Dispatch permit TTL must be a finite positive number.")
-        if signing_key is not None and (not isinstance(signing_key, bytes) or len(signing_key) < 32):
-            raise ValueError("Dispatch signing key must be at least 32 bytes.")
+        if not isinstance(active_key_id, str) or not IDENTIFIER_RE.fullmatch(active_key_id):
+            raise ValueError("Active dispatch key ID must be a valid identifier.")
+        keys: dict[str, bytes] = {}
+        if signing_keys is not None:
+            if not isinstance(signing_keys, dict) or not signing_keys:
+                raise ValueError("Dispatch signing key ring must be a non-empty mapping.")
+            for key_id, key_value in signing_keys.items():
+                if not isinstance(key_id, str) or not IDENTIFIER_RE.fullmatch(key_id):
+                    raise ValueError("Dispatch key IDs must be valid identifiers.")
+                if not isinstance(key_value, bytes) or len(key_value) < 32:
+                    raise ValueError("Every dispatch key must be at least 32 bytes.")
+                keys[key_id] = key_value
+        if signing_key is not None:
+            if not isinstance(signing_key, bytes) or len(signing_key) < 32:
+                raise ValueError("Dispatch signing key must be at least 32 bytes.")
+            existing = keys.get(active_key_id)
+            if existing is not None and not hmac.compare_digest(existing, signing_key):
+                raise ValueError("Active dispatch key conflicts with the key ring entry.")
+            keys[active_key_id] = signing_key
+        if not keys:
+            keys[active_key_id] = secrets.token_bytes(32)
+        if active_key_id not in keys:
+            raise ValueError("Active dispatch key ID is not present in the key ring.")
         self._clock = clock
         self._ttl_seconds = float(ttl_seconds)
-        self._signing_key = signing_key if signing_key is not None else secrets.token_bytes(32)
+        self._signing_keys = keys
+        self._active_key_id = active_key_id
         self._used_nonces: dict[str, float] = {}
         self._max_active_nonces = 100_000
         self._lock = threading.Lock()
@@ -260,6 +285,7 @@ class DispatchAuthority:
             "issued_at": permit.issued_at,
             "expires_at": permit.expires_at,
             "nonce": permit.nonce,
+            "key_id": permit.key_id,
         }
 
     def issue(
@@ -284,10 +310,11 @@ class DispatchAuthority:
             issued_at=issued_at,
             expires_at=issued_at + self._ttl_seconds,
             nonce=secrets.token_urlsafe(24),
+            key_id=self._active_key_id,
             signature="",
         )
         signature = hmac.new(
-            self._signing_key,
+            self._signing_keys[self._active_key_id],
             canonical_json(self._claims(unsigned)).encode("utf-8"),
             hashlib.sha256,
         ).hexdigest()
@@ -298,6 +325,7 @@ class DispatchAuthority:
             issued_at=unsigned.issued_at,
             expires_at=unsigned.expires_at,
             nonce=unsigned.nonce,
+            key_id=unsigned.key_id,
             signature=signature,
         )
 
@@ -314,6 +342,11 @@ class DispatchAuthority:
             not isinstance(permit.approval_id, str) or not permit.approval_id
         ):
             raise DispatchAuthorizationError("APPROVED permits must be bound to an approval ID.")
+        if not isinstance(permit.key_id, str) or not IDENTIFIER_RE.fullmatch(permit.key_id):
+            raise DispatchAuthorizationError("Dispatch permit key ID is invalid.")
+        signing_key = self._signing_keys.get(permit.key_id)
+        if signing_key is None:
+            raise DispatchAuthorizationError("Dispatch permit key ID is not trusted.")
         if not isinstance(permit.nonce, str) or not permit.nonce or len(permit.nonce) > 128:
             raise DispatchAuthorizationError("Dispatch permit nonce is invalid.")
         if not isinstance(permit.signature, str) or not re.fullmatch(r"[0-9a-f]{64}", permit.signature):
@@ -328,7 +361,7 @@ class DispatchAuthority:
 
         try:
             expected = hmac.new(
-                self._signing_key,
+                signing_key,
                 canonical_json(self._claims(permit)).encode("utf-8"),
                 hashlib.sha256,
             ).hexdigest()
@@ -781,6 +814,8 @@ class CustosGateway:
         approval_ttl_seconds: int = 300,
         clock: Callable[[], float] = time.time,
         dispatch_signing_key: bytes | None = None,
+        dispatch_signing_keys: dict[str, bytes] | None = None,
+        active_dispatch_key_id: str = "default",
     ) -> None:
         if approval_ttl_seconds < 1:
             raise ValueError("approval_ttl_seconds must be positive.")
@@ -799,6 +834,8 @@ class CustosGateway:
             clock=clock,
             ttl_seconds=15.0,
             signing_key=dispatch_signing_key,
+            signing_keys=dispatch_signing_keys,
+            active_key_id=active_dispatch_key_id,
         )
         self.adapter = GuardedExecutionAdapter(
             delegate=adapter or MockExecutionAdapter(),
