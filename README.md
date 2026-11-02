@@ -62,6 +62,8 @@ $agentToken = python -c "import secrets; print(secrets.token_urlsafe(32))"
 $reviewerToken = python -c "import secrets; print(secrets.token_urlsafe(32))"
 $env:CUSTOS_AGENT_TOKENS = '{"research_agent":"' + $agentToken + '"}'
 $env:CUSTOS_REVIEWER_TOKEN = $reviewerToken
+Write-Host "Agent token: $agentToken"
+Write-Host "Reviewer token: $reviewerToken"
 python custos_api.py
 ~~~
 
