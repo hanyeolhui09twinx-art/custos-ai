@@ -24,6 +24,10 @@
     {
       "name": "Approvals",
       "description": "Review a request that requires human approval and allow the originating agent to execute once."
+    },
+    {
+      "name": "Security",
+      "description": "Reviewer-only, read-only key-ring status and sanitized lifecycle audit events."
     }
   ],
   "paths": {
@@ -383,6 +387,88 @@
           }
         }
       }
+    },
+    "/v1/security/overview": {
+      "get": {
+        "tags": [
+          "Security"
+        ],
+        "summary": "Read key-ring status and lifecycle audit events",
+        "operationId": "getSecurityOverview",
+        "security": [
+          {
+            "ReviewerBearer": []
+          }
+        ],
+        "description": "Returns a sanitized view of the gateway and provider key-ring snapshots plus verified key lifecycle events. It never returns key bytes, key fingerprints, or unrelated audit payloads. State reflects configuration observed at process startup. This endpoint is read-only.",
+        "parameters": [
+          {
+            "name": "component",
+            "in": "query",
+            "required": false,
+            "description": "Filter lifecycle events by component. Both component snapshots are always returned.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "all",
+                "gateway",
+                "provider"
+              ],
+              "default": "all"
+            }
+          },
+          {
+            "name": "event",
+            "in": "query",
+            "required": false,
+            "description": "Filter key lifecycle events by exact event name.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "DISPATCH_KEYRING_INITIALIZED",
+                "DISPATCH_KEYRING_LOADED",
+                "DISPATCH_KEY_REGISTERED",
+                "DISPATCH_KEY_ACTIVATED",
+                "DISPATCH_KEY_REVOKED",
+                "DISPATCH_KEY_REPLACED"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Maximum number of newest combined events.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Key-ring summaries and sanitized, integrity-checked lifecycle events.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecurityOverviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -623,6 +709,176 @@
         "properties": {
           "error": {
             "type": "string"
+          }
+        }
+      },
+      "SecurityOverviewResponse": {
+        "type": "object",
+        "required": [
+          "generated_at",
+          "filters",
+          "components",
+          "events"
+        ],
+        "properties": {
+          "generated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "filters": {
+            "type": "object",
+            "properties": {
+              "component": {
+                "type": "string"
+              },
+              "event": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "limit": {
+                "type": "integer"
+              }
+            }
+          },
+          "components": {
+            "type": "object",
+            "properties": {
+              "gateway": {
+                "$ref": "#/components/schemas/KeyRingComponentStatus"
+              },
+              "provider": {
+                "$ref": "#/components/schemas/KeyRingComponentStatus"
+              }
+            }
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KeyLifecycleEvent"
+            }
+          }
+        }
+      },
+      "KeyRingComponentStatus": {
+        "type": "object",
+        "required": [
+          "component",
+          "status",
+          "active_key_id",
+          "accepted_key_ids",
+          "revoked_key_ids",
+          "audit_integrity",
+          "event_count",
+          "events"
+        ],
+        "properties": {
+          "component": {
+            "type": "string",
+            "enum": [
+              "gateway",
+              "provider"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "tracked",
+              "not_tracked"
+            ]
+          },
+          "active_key_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "accepted_key_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "revoked_key_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "audit_integrity": {
+            "type": "string",
+            "enum": [
+              "valid",
+              "missing",
+              "invalid",
+              "too_large"
+            ]
+          },
+          "event_count": {
+            "type": "integer"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KeyLifecycleEvent"
+            }
+          }
+        }
+      },
+      "KeyLifecycleEvent": {
+        "type": "object",
+        "required": [
+          "timestamp",
+          "event",
+          "component"
+        ],
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "event": {
+            "type": "string",
+            "enum": [
+              "DISPATCH_KEYRING_INITIALIZED",
+              "DISPATCH_KEYRING_LOADED",
+              "DISPATCH_KEY_REGISTERED",
+              "DISPATCH_KEY_ACTIVATED",
+              "DISPATCH_KEY_REVOKED",
+              "DISPATCH_KEY_REPLACED"
+            ]
+          },
+          "component": {
+            "type": "string",
+            "enum": [
+              "gateway",
+              "provider"
+            ]
+          },
+          "key_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "key_id": {
+            "type": "string"
+          },
+          "active_key_id": {
+            "type": "string"
+          },
+          "previous_active_key_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "same_id_material_changed": {
+            "type": "boolean"
           }
         }
       }
