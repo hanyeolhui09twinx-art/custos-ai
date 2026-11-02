@@ -153,6 +153,16 @@ if (!home.includes('href="./developers.html"') || !home.includes("Developer quic
 }
 const developerDocs = fs.readFileSync(path.join(site, "developers.html"), "utf8");
 for (const phrase of ['action = "send_email"', 'request_id = "docs-email-001"', '$emailResponse.approval_id', 'decision -ne "HUMAN_APPROVAL"', 'Bearer $reviewerToken', 'Bearer $agentToken', '-Body "{}"']) {
+if (!developerDocs.includes('"decision": "HUMAN_APPROVAL"') || !developerDocs.includes('"executed": false') || !developerDocs.includes('generated-by-server')) {
+  throw new Error("Developer Docs must show the expected human-approval response payload.");
+}
+if (!developerDocs.includes("It does not mean approval or external execution is complete.") && !developerDocs.includes("승인 완료나 외부 행동 실행을 뜻하지 않습니다.")) {
+  throw new Error("Developer Docs must distinguish HTTP acceptance from approval/execution.");
+}
+if (!developerDocs.includes('class="response-preview"') || !css.includes(".response-preview{")) {
+  throw new Error("Expected API response must be shown in a distinct explanatory panel.");
+}
+
   if (!developerDocs.includes(phrase)) throw new Error("Developer walkthrough is incomplete: " + phrase);
 }
 if (!developerDocs.includes('class="walkthrough-steps"') || !css.includes(".prototype-grid") || !css.includes(".decision-cards")) {
