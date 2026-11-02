@@ -333,18 +333,23 @@ class GuardedExecutionAdapter:
         delegate: ExecutionAdapter,
         policy_engine: PolicyEngine,
         dispatch_authority: DispatchAuthority,
+        approval_claim_verifier: Callable[[str, ActionRequest], bool],
     ) -> None:
         self._delegate = delegate
         self._policy_engine = policy_engine
         self._dispatch_authority = dispatch_authority
+        self._approval_claim_verifier = approval_claim_verifier
 
     def execute(self, request: ActionRequest, permit: DispatchPermit) -> dict[str, Any]:
         self._dispatch_authority.consume(request, permit)
         decision, _ = self._policy_engine.evaluate(request)
         if permit.mode == "ALLOW" and decision is not Decision.ALLOW:
             raise DispatchAuthorizationError("Current policy no longer permits this dispatch.")
-        if permit.mode == "APPROVED" and decision is Decision.BLOCK:
-            raise DispatchAuthorizationError("Current policy blocks this previously approved dispatch.")
+        if permit.mode == "APPROVED":
+            if decision is Decision.BLOCK:
+                raise DispatchAuthorizationError("Current policy blocks this previously approved dispatch.")
+            if not self._approval_claim_verifier(permit.approval_id or "", request):
+                raise DispatchAuthorizationError("The approval is not in a valid, request-bound execution state.")
         return self._delegate.execute(request)
 
 
@@ -569,6 +574,29 @@ class ApprovalStore:
         return request
 
 
+    def verify_execution_claim(self, approval_id: str, request: ActionRequest) -> bool:
+        """Verify that this exact request owns the atomic executing claim."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT request_digest, request_json, status FROM approvals WHERE approval_id=?",
+                (approval_id,),
+            ).fetchone()
+        if row is None or row["status"] != "executing":
+            return False
+        if row["request_digest"] != request.digest:
+            return False
+        try:
+            stored = json.loads(row["request_json"])
+        except (TypeError, ValueError):
+            return False
+        return (
+            stored.get("agent_id") == request.agent_id
+            and stored.get("action") == request.action
+            and stored.get("resource") == request.resource
+            and stored.get("request_id") == request.request_id
+        )
+
+
     def finish_execution(self, approval_id: str, status: str, result: dict[str, Any] | None = None) -> None:
         if status not in {"executed", "failed", "blocked"}:
             raise ValueError("Invalid terminal approval status.")
@@ -605,6 +633,7 @@ class CustosGateway:
             delegate=adapter or MockExecutionAdapter(),
             policy_engine=self.policy_engine,
             dispatch_authority=self._dispatch_authority,
+            approval_claim_verifier=self.store.verify_execution_claim,
         )
 
     def submit(self, request: ActionRequest) -> dict[str, Any]:
