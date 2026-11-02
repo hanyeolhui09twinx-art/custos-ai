@@ -135,6 +135,12 @@ for (const phrase of ["CURRENT BUILD / 03 NOV 2026", "IMPLEMENTED LOCALLY", "SIM
   if (!home.toLowerCase().includes(phrase.toLowerCase())) throw new Error("Homepage prototype-status panel is missing: " + phrase);
 }
 const platform = fs.readFileSync(path.join(site, "platform.html"), "utf8");
+for (const term of ["Agent", "Action", "Resource", "Policy", "Reviewer", "Execution Adapter", "shared development Reviewer token", "MockExecutionAdapter"]) {
+  if (!platform.includes(term)) throw new Error("Platform glossary is missing a core term or implementation caveat: " + term);
+}
+if (!platform.includes('class="term-grid"') || !css.includes(".term-grid{")) {
+  throw new Error("Platform glossary cards are missing their responsive UI styling.");
+}
 for (const phrase of ["ALLOW", "HUMAN_APPROVAL", "BLOCK", "research_agent", "read_database", "company_email"]) {
   if (!platform.includes(phrase)) throw new Error("Platform decision guide is missing: " + phrase);
 }
