@@ -18,6 +18,7 @@ This document describes the current v0.2 prototype boundary. It is intentionally
 - **Human identity:** The reviewer is represented by one shared token and a fixed reviewer label. There are no individual reviewer accounts, role separation, MFA, quorum approval, or reviewer audit identity verification.
 - **Policy administration:** There is no signed policy bundle, policy version approval, policy rollback workflow, or policy-integrity monitor.
 - **Tool boundary:** The mock adapter does not prove that a real tool cannot be called directly. A real adapter must enforce the policy at the actual tool boundary, not just trust a prior UI decision.
+- **Dispatch capability lifecycle:** The local guarded adapter now requires a 15-second HMAC-signed permit bound to the exact request digest. It re-checks current policy and, for approval-backed dispatch, the exact SQLite row in `executing` state. Nonce replay tracking is in process memory and is not shared across workers or restarts. The signing key is ephemeral per process. These are prototype controls, not a production key-management or distributed replay service.
 - **Distributed execution:** The SQLite store coordinates one local service instance. There is no distributed lock, queue, cross-region consistency, or transaction shared with a downstream tool.
 - **Audit storage:** The JSONL hash chain detects edits that break the recorded chain. It is not immutable; an attacker who can rewrite the whole file can recompute the hashes. There is no remote/WORM copy, independent signing key, or external timestamp anchor.
 - **Browser integration:** GitHub Pages hosts a separate static simulation. It does not call the local API. The hosted page is not a remote dashboard for this backend.
@@ -48,16 +49,16 @@ This document describes the current v0.2 prototype boundary. It is intentionally
 
 ## /SELFCRITIQUE — What this version does and does not prove
 
-The v0.2 work improves the prototype in concrete ways: deny-by-default policy evaluation, strict request validation, bearer-token identity mapping, SQLite-persisted approvals, approval expiry, requester binding, single-use execution claims, dispatch-time policy re-checks, request idempotency, a hash-chained local audit trail, and automated tests.
+The local prototype now includes deny-by-default policy evaluation, strict request validation, bearer-token identity mapping, SQLite-persisted approvals, approval expiry, requester binding, single-use execution claims, request idempotency, a hash-chained local audit trail, and a guarded adapter boundary. The boundary requires a 15-second HMAC-signed permit bound to the exact request digest; it consumes the permit once, re-evaluates current policy, and verifies an approval-backed SQLite execution claim before invoking the configured delegate.
 
-The tests exercise these behaviors, including concurrent approval execution, modified approval payloads, CORS origin restrictions, oversized/deep JSON rejection, and raw credential field rejection. The CI result only says that these specific automated tests passed in GitHub's runner. It does not demonstrate resistance to unknown attacks, production load, compromised hosts, malicious adapters, or direct agent-to-tool bypass.
+The tests exercise these behaviors, including concurrent approval execution, modified approval payloads, CORS origin restrictions, oversized/deep JSON rejection, raw credential field rejection, forged/expired/replayed dispatch permits, policy changes at the adapter boundary, and approval-ID/request binding. The CI result only says that these specific automated tests passed in GitHub's runner. It does not demonstrate resistance to unknown attacks, production load, compromised hosts, malicious adapters, or direct agent-to-tool bypass. Python in-process object boundaries are not a sandbox: code with access to the gateway process, signing authority, or underlying delegate can bypass conventions such as underscore-prefixed attributes.
 
 The most important missing proof is an end-to-end test with a real agent framework and an isolated tool sandbox, where the agent has no alternate path to the tool. Until that exists, Custos should be described as a local research prototype with a mock execution adapter, not a production enforcement layer.
 
 ## Next verification gates
 
 1. Add a dedicated local console or safely connect the browser interface to the local API without exposing credentials to a public page.
-2. Add adapter-level authorization and test direct-call bypass attempts in an isolated environment.
+2. Connect one real agent framework to an isolated tool sandbox where the agent never receives the raw tool client or credentials; test direct-call bypass at the tool provider boundary.
 3. Add request-receipt recovery/retention and crash reconciliation.
 4. Replace shared static reviewer credentials with individual authenticated reviewer identities and roles.
 5. Add signed, versioned policy bundles and explicit key rotation/revocation.
