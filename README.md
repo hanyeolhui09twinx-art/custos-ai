@@ -193,3 +193,4 @@ Custos should currently be described as a local research prototype with a mock e
 - [Day 012 — Authenticated provider receipt lookups](devlog/day-012.md)
 - [Day 013 — Dispatch key-ring rotation](devlog/day-013.md)
 - [Day 014 — Key compromise response and lifecycle audit](devlog/day-014.md)
+- [Day 015 — Read-only Security Operations](devlog/day-015.md)
