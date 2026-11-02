@@ -204,10 +204,10 @@ for (const page of ["platform.html", "technology.html", "security.html", "resear
 }
 
 const updates = fs.readFileSync(path.join(site, "updates.html"), "utf8");
-for (const phrase of ["DAY 001", "DAY 002", "DAY 003", "DAY 004", "DAY 005", "DAY 006", "DAY 007", "DAY 008", "DAY 009", "DAY 010", "DAY 011", "DAY 012", "DAY 013", "DAY 014", "64 TESTS PASS", "NOT VERIFIED", "mock execution adapter", "real-agent bypass resistance"]) {
+for (const phrase of ["DAY 001", "DAY 002", "DAY 003", "DAY 004", "DAY 005", "DAY 006", "DAY 007", "DAY 008", "DAY 009", "DAY 010", "DAY 011", "DAY 012", "DAY 013", "DAY 014", "DAY 015", "67 TESTS PASS", "NOT VERIFIED", "mock execution adapter", "real-agent bypass resistance"]) {
   if (!updates.toLowerCase().includes(phrase.toLowerCase())) throw new Error("Updates page is missing factual status item: " + phrase);
 }
-for (const log of ["day-001.md", "day-002.md", "day-003.md", "day-004.md", "day-005.md", "day-006.md", "day-007.md", "day-008.md", "day-009.md", "day-010.md", "day-011.md", "day-012.md", "day-013.md", "day-014.md"]) {
+for (const log of ["day-001.md", "day-002.md", "day-003.md", "day-004.md", "day-005.md", "day-006.md", "day-007.md", "day-008.md", "day-009.md", "day-010.md", "day-011.md", "day-012.md", "day-013.md", "day-014.md", "day-015.md"]) {
   if (!updates.includes(log)) throw new Error("Updates page is missing the source development log: " + log);
 }
 
@@ -233,7 +233,7 @@ for (const phrase of ["subprocess.Popen", "test_provider_permit_is_single_use_un
   if (!providerTests.includes(phrase)) throw new Error("Separate-process integration test is missing: " + phrase);
 }
 const keyringAuditSource = fs.readFileSync(path.join(root, "keyring_audit.py"), "utf8");
-for (const phrase of ["class KeyRingLifecycle", "DISPATCH_KEYRING_INITIALIZED", "DISPATCH_KEY_REGISTERED", "DISPATCH_KEY_ACTIVATED", "DISPATCH_KEY_REVOKED", "DISPATCH_KEY_REPLACED", "DISPATCH_KEYRING_LOADED", "fingerprint", "audit_log.record"]) {
+for (const phrase of ["class KeyRingLifecycle", "read_keyring_observability", "KEY_LIFECYCLE_EVENTS", "MAX_AUDIT_VIEW_BYTES", "_safe_key_event", "DISPATCH_KEYRING_INITIALIZED", "DISPATCH_KEY_REGISTERED", "DISPATCH_KEY_ACTIVATED", "DISPATCH_KEY_REVOKED", "DISPATCH_KEY_REPLACED", "DISPATCH_KEYRING_LOADED", "fingerprint", "audit_log.record"]) {
   if (!keyringAuditSource.includes(phrase)) throw new Error("Key lifecycle audit implementation is missing: " + phrase);
 }
 const keyringAuditTests = fs.readFileSync(path.join(root, "tests", "test_keyring_audit.py"), "utf8");
