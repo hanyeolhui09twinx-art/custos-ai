@@ -112,7 +112,7 @@ $env:CUSTOS_REVIEWER_TOKEN = $reviewerToken
 python custos_api.py
 ~~~
 
-The gateway sends the request and signed permit; the provider checks the signature, exact request digest, expiry, and durable one-time nonce before invoking its mock registry. The shared development key is not a production key-management design. Both processes still run on one trusted machine, the provider uses loopback HTTP, and no external tools or credentials are connected.
+The gateway sends the request and signed permit; the provider checks the signature, exact request digest, expiry, and durable one-time nonce before invoking its mock registry. Receipt lookups use a second HMAC key derived from the shared dispatch key and bind the signature to the exact GET path in the `X-Custos-Receipt-Signature` header; signatures are not placed in URL query strings. The shared development key is not a production key-management design. Both processes still run on one trusted machine and use loopback HTTP, and no external tools or credentials are connected.
 
 ### API routes
 
@@ -151,7 +151,7 @@ This is **not a production security product**:
 - It binds to loopback only. Do not expose it to a network or connect it to valuable tools.
 - Agent identity is mapped from a configured static token. There is no asymmetric identity, signed request envelope, delegated credential chain, or hardware-backed key protection.
 - Approval state is stored in local SQLite. There is no distributed transaction with a downstream tool.
-- The separate mock provider verifies dispatch permits and stores execution receipts in another local process. Gateway startup also recovers local request receipts left processing, but recovery assumes a single gateway instance. The provider is not an OS sandbox and has no real tool credentials. The ledger provides provider-local at-most-once invocation behavior; a crash after a real downstream side effect but before receipt completion still requires that downstream tool's own idempotency key or status-query reconciliation.
+- The separate mock provider verifies dispatch permits, HMAC-authenticates receipt reads, and stores execution receipts in another local process. Gateway startup also recovers local request receipts left processing, but recovery assumes a single gateway instance. The provider is not an OS sandbox and has no real tool credentials. The ledger provides provider-local at-most-once invocation behavior; a crash after a real downstream side effect but before receipt completion still requires that downstream tool's own idempotency key or status-query reconciliation.
 - Raw credential field names are rejected, but this is not general-purpose secret detection. Never place secrets in free-text values.
 - The audit log is hash-chained but not immutable against a privileged actor who can rewrite the entire file.
 - The Local Control Room uses development tokens. The public page code is part of the credential trust boundary; do not enter production secrets.
