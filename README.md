@@ -54,7 +54,7 @@ The original bilingual browser simulation is preserved at [Simulation Lab](https
 
 ### 3. Local Control Room
 
-The [Local Control Room](https://hanyeolhui09twinx-art.github.io/custos-ai/local-console.html) can call the Python API on the user's own computer. The page keeps entered tokens in memory rather than localStorage and requires browser Loopback network permission in supported browsers.
+The [Local Control Room](https://hanyeolhui09twinx-art.github.io/custos-ai/local-console.html) can call the Python API on the user's own computer. The [OpenAPI 3.1 contract](https://hanyeolhui09twinx-art.github.io/custos-ai/openapi.json) documents the local routes and schemas. The page keeps entered tokens in memory rather than localStorage and requires browser Loopback network permission in supported browsers.
 
 The hosted site does not provide the Python backend. The API must be started locally.
 
