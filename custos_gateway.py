@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import math
 import re
 import secrets
 import sqlite3
@@ -230,13 +231,18 @@ class DispatchAuthority:
         ttl_seconds: float = 15.0,
         signing_key: bytes | None = None,
     ) -> None:
-        if ttl_seconds <= 0:
-            raise ValueError("Dispatch permit TTL must be positive.")
+        if (
+            isinstance(ttl_seconds, bool)
+            or not isinstance(ttl_seconds, (int, float))
+            or not math.isfinite(ttl_seconds)
+            or ttl_seconds <= 0
+        ):
+            raise ValueError("Dispatch permit TTL must be a finite positive number.")
+        if signing_key is not None and (not isinstance(signing_key, bytes) or len(signing_key) < 32):
+            raise ValueError("Dispatch signing key must be at least 32 bytes.")
         self._clock = clock
         self._ttl_seconds = float(ttl_seconds)
-        self._signing_key = signing_key or secrets.token_bytes(32)
-        if len(self._signing_key) < 32:
-            raise ValueError("Dispatch signing key must contain at least 32 bytes.")
+        self._signing_key = signing_key if signing_key is not None else secrets.token_bytes(32)
         self._used_nonces: dict[str, float] = {}
         self._max_active_nonces = 100_000
         self._lock = threading.Lock()
@@ -294,22 +300,36 @@ class DispatchAuthority:
     def consume(self, request: ActionRequest, permit: DispatchPermit) -> None:
         if not isinstance(permit, DispatchPermit):
             raise DispatchAuthorizationError("A valid dispatch permit is required.")
-        if permit.request_digest != request.digest:
+        if not isinstance(permit.request_digest, str) or permit.request_digest != request.digest:
             raise DispatchAuthorizationError("Dispatch permit does not match this exact request.")
-        if permit.mode not in {"ALLOW", "APPROVED"}:
+        if not isinstance(permit.mode, str) or permit.mode not in {"ALLOW", "APPROVED"}:
             raise DispatchAuthorizationError("Dispatch permit mode is invalid.")
         if permit.mode == "ALLOW" and permit.approval_id is not None:
             raise DispatchAuthorizationError("ALLOW permits cannot carry approval IDs.")
-        if permit.mode == "APPROVED" and not permit.approval_id:
+        if permit.mode == "APPROVED" and (
+            not isinstance(permit.approval_id, str) or not permit.approval_id
+        ):
             raise DispatchAuthorizationError("APPROVED permits must be bound to an approval ID.")
-        if not permit.nonce or not permit.signature:
-            raise DispatchAuthorizationError("Dispatch permit is incomplete.")
+        if not isinstance(permit.nonce, str) or not permit.nonce or len(permit.nonce) > 128:
+            raise DispatchAuthorizationError("Dispatch permit nonce is invalid.")
+        if not isinstance(permit.signature, str) or not re.fullmatch(r"[0-9a-f]{64}", permit.signature):
+            raise DispatchAuthorizationError("Dispatch permit signature is malformed.")
+        for timestamp in (permit.issued_at, permit.expires_at):
+            if (
+                isinstance(timestamp, bool)
+                or not isinstance(timestamp, (int, float))
+                or not math.isfinite(timestamp)
+            ):
+                raise DispatchAuthorizationError("Dispatch permit timestamps are invalid.")
 
-        expected = hmac.new(
-            self._signing_key,
-            canonical_json(self._claims(permit)).encode("utf-8"),
-            hashlib.sha256,
-        ).hexdigest()
+        try:
+            expected = hmac.new(
+                self._signing_key,
+                canonical_json(self._claims(permit)).encode("utf-8"),
+                hashlib.sha256,
+            ).hexdigest()
+        except (TypeError, ValueError, RecursionError) as exc:
+            raise DispatchAuthorizationError("Dispatch permit claims are malformed.") from exc
         if not hmac.compare_digest(expected, permit.signature):
             raise DispatchAuthorizationError("Dispatch permit signature is invalid.")
 
