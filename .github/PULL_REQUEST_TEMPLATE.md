@@ -16,6 +16,7 @@ Link the relevant issue, if any.
 
 - [ ] `python -m unittest discover -s tests -v`
 - [ ] `node tests/check_studio_console.js`
+- [ ] `node tests/check_simulation_lab.js`
 - [ ] `node tests/check_corporate_site.js`
 - [ ] Added or updated regression tests for new behavior.
 - [ ] Updated relevant documentation and development log.
