@@ -122,7 +122,11 @@ class OpenAIAgentsSDKIntegrationTests(unittest.TestCase):
         self.assertEqual(first["decision"], "ALLOW")
         self.assertTrue(first["executed"])
         self.assertIn("MOCK EXECUTION ONLY", first["boundary_note"])
-        self.assertEqual(first, second)
+        self.assertEqual(
+            {key: value for key, value in first.items() if key != "replayed"},
+            {key: value for key, value in second.items() if key != "replayed"},
+        )
+        self.assertTrue(second.get("replayed"))
         self.assertEqual(len(self.adapter.executed), 1)
 
     def test_email_action_cannot_execute_without_separate_human_approval(self) -> None:
