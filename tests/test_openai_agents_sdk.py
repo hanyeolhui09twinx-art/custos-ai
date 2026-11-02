@@ -1,17 +1,24 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import importlib.util
 import json
+import os
+import socket
+import sqlite3
+import subprocess
+import sys
 import tempfile
 import threading
+import time
 import unittest
+import urllib.error
 import urllib.request
 from pathlib import Path
+from unittest.mock import patch
 
-from audit_log import AuditLog
 from custos_api import create_server
-from custos_gateway import ApprovalStore, CustosGateway, MockExecutionAdapter
 from integrations.custos_client import CustosClient
 
 
@@ -41,21 +48,63 @@ class OpenAIAgentsSDKIntegrationTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         root = Path(self.temp.name)
-        self.adapter = MockExecutionAdapter()
-        self.gateway = CustosGateway(
-            store=ApprovalStore(root / "approvals.sqlite3"),
-            audit_log=AuditLog(str(root / "audit.jsonl")),
-            adapter=self.adapter,
-            approval_ttl_seconds=60,
+        self.provider_db_path = root / "provider-replay.sqlite3"
+        self.provider_audit_path = root / "provider-audit.jsonl"
+        self.api_db_path = root / "api-approvals.sqlite3"
+        self.api_audit_path = root / "api-audit.jsonl"
+
+        # Run the provider as a distinct process so this integration test covers
+        # SDK -> API -> Gateway -> signed HTTP dispatch -> Provider receipt ledger.
+        probe = socket.socket()
+        probe.bind(("127.0.0.1", 0))
+        self.provider_port = probe.getsockname()[1]
+        probe.close()
+        self.provider_url = f"http://127.0.0.1:{self.provider_port}/v1/dispatch"
+        self.dispatch_key_id = "sdk-test"
+        self.dispatch_key = bytes.fromhex("51" * 32)
+        key_ring_json = json.dumps({self.dispatch_key_id: self.dispatch_key.hex()})
+
+        provider_env = os.environ.copy()
+        provider_env.pop("CUSTOS_DISPATCH_SIGNING_KEY", None)
+        provider_env["CUSTOS_DISPATCH_KEYS"] = key_ring_json
+        provider_env["CUSTOS_ACTIVE_DISPATCH_KEY_ID"] = self.dispatch_key_id
+        provider_command = [
+            sys.executable,
+            str(Path(__file__).resolve().parents[1] / "custos_provider.py"),
+            "--host", "127.0.0.1",
+            "--port", str(self.provider_port),
+            "--db", str(self.provider_db_path),
+            "--audit", str(self.provider_audit_path),
+        ]
+        self.provider_process = subprocess.Popen(
+            provider_command,
+            cwd=Path(__file__).resolve().parents[1],
+            env=provider_env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
-        self.server = create_server(
-            agent_tokens={"research_agent": AGENT_TOKEN},
-            reviewer_token=REVIEWER_TOKEN,
-            db_path=root / "api-approvals.sqlite3",
-            audit_path=root / "api-audit.jsonl",
-            gateway=self.gateway,
-            port=0,
-        )
+        self.addCleanup(self._stop_provider)
+        self._wait_for_provider()
+
+        with patch.dict(
+            os.environ,
+            {
+                "CUSTOS_TOOL_PROVIDER_URL": self.provider_url,
+                "CUSTOS_DISPATCH_KEYS": key_ring_json,
+                "CUSTOS_ACTIVE_DISPATCH_KEY_ID": self.dispatch_key_id,
+                "CUSTOS_PROVIDER_DB": str(self.provider_db_path),
+                "CUSTOS_PROVIDER_AUDIT_LOG": str(self.provider_audit_path),
+            },
+        ):
+            self.server = create_server(
+                agent_tokens={"research_agent": AGENT_TOKEN},
+                reviewer_token=REVIEWER_TOKEN,
+                db_path=self.api_db_path,
+                audit_path=self.api_audit_path,
+                provider_db_path=self.provider_db_path,
+                provider_audit_path=self.provider_audit_path,
+                port=0,
+            )
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.addCleanup(self._stop_server)
@@ -70,6 +119,56 @@ class OpenAIAgentsSDKIntegrationTests(unittest.TestCase):
         self.server.shutdown()
         self.server.server_close()
         self.thread.join(timeout=2)
+
+    def _stop_provider(self) -> None:
+        process = getattr(self, "provider_process", None)
+        if process is not None and process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=3)
+
+    def _wait_for_provider(self) -> None:
+        health_url = f"http://127.0.0.1:{self.provider_port}/health"
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline:
+            if self.provider_process.poll() is not None:
+                self.fail("The separate mock provider exited during startup.")
+            try:
+                with urllib.request.urlopen(health_url, timeout=0.25) as response:
+                    if response.status == 200:
+                        return
+            except (urllib.error.URLError, TimeoutError, OSError):
+                time.sleep(0.05)
+        self.fail("The separate mock provider did not become healthy.")
+
+    def _provider_receipts(self, request_id: str | None = None) -> list[dict]:
+        with sqlite3.connect(self.provider_db_path) as connection:
+            if request_id is None:
+                rows = connection.execute(
+                    "SELECT agent_id, request_id, request_digest, status, result_json FROM execution_receipts ORDER BY created_at"
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    "SELECT agent_id, request_id, request_digest, status, result_json FROM execution_receipts WHERE request_id=?",
+                    (request_id,),
+                ).fetchall()
+        return [
+            {
+                "agent_id": row[0],
+                "request_id": row[1],
+                "request_digest": row[2],
+                "status": row[3],
+                "result": json.loads(row[4]) if row[4] else None,
+            }
+            for row in rows
+        ]
+
+    @staticmethod
+    def _custos_request_id(call_id: str) -> str:
+        return "oa_" + hashlib.sha256(call_id.encode("utf-8")).hexdigest()[:48]
 
     async def _invoke(self, name: str, arguments: dict, call_id: str) -> dict:
         tool = self.tools[name]
@@ -127,7 +226,12 @@ class OpenAIAgentsSDKIntegrationTests(unittest.TestCase):
             {key: value for key, value in second.items() if key != "replayed"},
         )
         self.assertTrue(second.get("replayed"))
-        self.assertEqual(len(self.adapter.executed), 1)
+        receipt = self._provider_receipts(self._custos_request_id("call_read_001"))
+        self.assertEqual(len(receipt), 1)
+        self.assertEqual(receipt[0]["agent_id"], "research_agent")
+        self.assertEqual(receipt[0]["status"], "completed")
+        self.assertEqual(receipt[0]["result"]["action"], "read_database")
+        self.assertEqual(receipt[0]["result"]["status"], "simulated")
 
     def test_email_action_cannot_execute_without_separate_human_approval(self) -> None:
         pending = self.invoke(
@@ -143,7 +247,7 @@ class OpenAIAgentsSDKIntegrationTests(unittest.TestCase):
         self.assertFalse(pending["executed"])
         self.assertEqual(pending["execution_status"], "pending_human_review")
         self.assertIn("NOT EXECUTED", pending["boundary_note"])
-        self.assertEqual(len(self.adapter.executed), 0)
+        self.assertEqual(self._provider_receipts(), [])
 
         # Replaying the same SDK tool-call ID must recover the same pending approval,
         # not create a second approval record.
@@ -167,7 +271,7 @@ class OpenAIAgentsSDKIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(premature["decision"], "ERROR")
         self.assertEqual(premature["http_status"], 409)
-        self.assertEqual(len(self.adapter.executed), 0)
+        self.assertEqual(self._provider_receipts(), [])
 
         # Only the separate reviewer identity can change the approval state.
         review = self._review(pending["approval_id"], "approve")
@@ -179,9 +283,11 @@ class OpenAIAgentsSDKIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(executed["decision"], "ALLOW")
         self.assertTrue(executed["executed"])
-        self.assertEqual(len(self.adapter.executed), 1)
-        self.assertEqual(self.adapter.executed[0]["action"], "send_email")
-        self.assertEqual(self.adapter.executed[0]["status"], "simulated")
+        receipts = self._provider_receipts()
+        self.assertEqual(len(receipts), 1)
+        self.assertEqual(receipts[0]["status"], "completed")
+        self.assertEqual(receipts[0]["result"]["action"], "send_email")
+        self.assertEqual(receipts[0]["result"]["status"], "simulated")
 
 
 if __name__ == "__main__":
