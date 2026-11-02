@@ -152,7 +152,9 @@ if (!apiSource.includes('origin != "https://hanyeolhui09twinx-art.github.io"')) 
 }
 const gatewaySource = fs.readFileSync(path.join(root, "custos_gateway.py"), "utf8");
 for (const status of ["pending", "approved", "denied", "expired", "executing", "executed", "blocked", "failed"]) {
-  if (!gatewaySource.includes("'" + status + "'")) throw new Error("Approval state is missing from gateway implementation: " + status);
+  if (!gatewaySource.includes("'" + status + "'") && !gatewaySource.includes('"' + status + '"')) {
+    throw new Error("Approval state is missing from gateway implementation: " + status);
+  }
 }
 const openApiPath = path.join(site, "openapi.json");
 const openApi = JSON.parse(fs.readFileSync(openApiPath, "utf8"));
