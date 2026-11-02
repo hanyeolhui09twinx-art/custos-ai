@@ -237,7 +237,8 @@ class DispatchAuthority:
         self._signing_key = signing_key or secrets.token_bytes(32)
         if len(self._signing_key) < 32:
             raise ValueError("Dispatch signing key must contain at least 32 bytes.")
-        self._used_nonces: set[str] = set()
+        self._used_nonces: dict[str, float] = {}
+        self._max_active_nonces = 100_000
         self._lock = threading.Lock()
 
     @staticmethod
@@ -320,9 +321,17 @@ class DispatchAuthority:
         # The replay claim is atomic within this process. A distributed deployment
         # must replace this in-memory set with a shared durable nonce store.
         with self._lock:
+            expired_nonces = [
+                nonce for nonce, expires_at in self._used_nonces.items()
+                if expires_at <= now
+            ]
+            for nonce in expired_nonces:
+                self._used_nonces.pop(nonce, None)
             if permit.nonce in self._used_nonces:
                 raise DispatchAuthorizationError("Dispatch permit has already been consumed.")
-            self._used_nonces.add(permit.nonce)
+            if len(self._used_nonces) >= self._max_active_nonces:
+                raise DispatchAuthorizationError("Dispatch replay cache is at capacity; dispatch fails closed.")
+            self._used_nonces[permit.nonce] = permit.expires_at
 
 
 class GuardedExecutionAdapter:
