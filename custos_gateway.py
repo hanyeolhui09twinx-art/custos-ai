@@ -55,7 +55,7 @@ def canonical_json(value: Any) -> str:
 
 
 def reject_raw_secrets(value: Any, path: str = "parameters") -> None:
-    """Reject common raw credential fields before they reach approvals or audit logs."""
+    """Reject raw credential fields and excessively deep structures iteratively."""
     sensitive_parts = (
         "password",
         "passwd",
@@ -68,19 +68,27 @@ def reject_raw_secrets(value: Any, path: str = "parameters") -> None:
         "bearertoken",
         "credential",
     )
-    if isinstance(value, dict):
-        for key, child in value.items():
-            normalized = re.sub(r"[^a-z0-9]", "", str(key).casefold())
-            is_reference = normalized.endswith(("ref", "reference"))
-            if not is_reference and (normalized == "token" or any(part in normalized for part in sensitive_parts)):
-                raise ValueError(
-                    f"Raw credential field rejected at {path}.{key}; use a managed credential reference."
-                )
-            reject_raw_secrets(child, f"{path}.{key}")
-    elif isinstance(value, list):
-        for index, child in enumerate(value):
-            reject_raw_secrets(child, f"{path}[{index}]")
-
+    stack: list[tuple[Any, str, int]] = [(value, path, 0)]
+    while stack:
+        current, current_path, depth = stack.pop()
+        if depth > 64:
+            raise ValueError("parameters nesting exceeds the 64-level limit.")
+        if isinstance(current, dict):
+            for key, child in current.items():
+                normalized = re.sub(r"[^a-z0-9]", "", str(key).casefold())
+                is_reference = normalized.endswith(("ref", "reference"))
+                if not is_reference and (
+                    normalized == "token"
+                    or any(part in normalized for part in sensitive_parts)
+                ):
+                    raise ValueError(
+                        f"Raw credential field rejected at {current_path}.{key}; "
+                        "use a managed credential reference."
+                    )
+                stack.append((child, f"{current_path}.{key}", depth + 1))
+        elif isinstance(current, list):
+            for index, child in enumerate(current):
+                stack.append((child, f"{current_path}[{index}]", depth + 1))
 
 @dataclass(frozen=True)
 class ActionRequest:
