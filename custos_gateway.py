@@ -71,7 +71,8 @@ def reject_raw_secrets(value: Any, path: str = "parameters") -> None:
     if isinstance(value, dict):
         for key, child in value.items():
             normalized = re.sub(r"[^a-z0-9]", "", str(key).casefold())
-            if normalized == "token" or any(part in normalized for part in sensitive_parts):
+            is_reference = normalized.endswith(("ref", "reference"))
+            if not is_reference and (normalized == "token" or any(part in normalized for part in sensitive_parts)):
                 raise ValueError(
                     f"Raw credential field rejected at {path}.{key}; use a managed credential reference."
                 )
