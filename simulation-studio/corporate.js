@@ -2,6 +2,12 @@
 "use strict";
 var root=document.documentElement;
 var language="ko";
+function syncMenuLabel(){
+ var button=document.querySelector("[data-menu-toggle]");
+ if(!button)return;
+ var open=button.getAttribute("aria-expanded")==="true";
+ button.setAttribute("aria-label",language==="ko"?(open?"메뉴 닫기":"메뉴 열기"):(open?"Close menu":"Open menu"));
+}
 function applyLanguage(next){
  language=next==="en"?"en":"ko";
  root.lang=language;
@@ -15,6 +21,7 @@ function applyLanguage(next){
    btn.classList.toggle("active",btn.getAttribute("data-lang-button")===language);
    btn.setAttribute("aria-pressed",btn.getAttribute("data-lang-button")===language?"true":"false");
  });
+ syncMenuLabel();
  try{sessionStorage.setItem("custos-language",language)}catch(e){}
 }
 try{var saved=sessionStorage.getItem("custos-language");if(saved==="en")language="en"}catch(e){}
@@ -26,8 +33,14 @@ if(toggle&&mobile){
  toggle.addEventListener("click",function(){
   var open=mobile.classList.toggle("open");
   toggle.setAttribute("aria-expanded",open?"true":"false");
+  syncMenuLabel();
  });
- mobile.querySelectorAll("a").forEach(function(a){a.addEventListener("click",function(){mobile.classList.remove("open");toggle.setAttribute("aria-expanded","false")})});
+ mobile.querySelectorAll("a").forEach(function(a){a.addEventListener("click",function(){mobile.classList.remove("open");toggle.setAttribute("aria-expanded","false");syncMenuLabel()})});
+ document.addEventListener("keydown",function(event){
+  if(event.key==="Escape"&&mobile.classList.contains("open")){
+   mobile.classList.remove("open");toggle.setAttribute("aria-expanded","false");syncMenuLabel();toggle.focus();
+  }
+ });
 }
 var page=document.body.getAttribute("data-page");
 document.querySelectorAll("[data-nav]").forEach(function(a){
@@ -47,13 +60,13 @@ var cases={
 var selected="read",pending=false;
 function pick(id){
  selected=id;pending=false;
- document.querySelectorAll("[data-demo-case]").forEach(function(b){b.classList.toggle("active",b.getAttribute("data-demo-case")===id)});
+ document.querySelectorAll("[data-demo-case]").forEach(function(b){var active=b.getAttribute("data-demo-case")===id;b.classList.toggle("active",active);b.setAttribute("aria-pressed",active?"true":"false")});
  var c=cases[id];if(!c)return;
  var action=document.getElementById("demoAction"),resource=document.getElementById("demoResource"),scope=document.getElementById("demoScope"),effect=document.getElementById("demoEffect"),decision=document.getElementById("demoDecision"),dot=document.getElementById("demoLed"),desc=document.getElementById("demoDescription"),review=document.getElementById("demoReview");
  if(!action)return;
  action.textContent=c.action;resource.textContent=c.resource;scope.textContent=c.scope;effect.textContent=c.effect;
  decision.textContent=language==="ko"?"판정 대기":"AWAITING DECISION";dot.className="decision-led";desc.textContent=language==="ko"?"시나리오를 선택하고 정책 판정을 실행하세요.":"Select a scenario and run the policy check.";
- if(review)review.classList.remove("show");
+ if(review){review.classList.remove("show");review.hidden=true;}
 }
 document.querySelectorAll("[data-demo-case]").forEach(function(b){b.addEventListener("click",function(){pick(b.getAttribute("data-demo-case"))})});
 var run=document.querySelector("[data-demo-run]");
