@@ -152,7 +152,7 @@ if (!css.includes(".code-panel pre{") || !css.includes("@media(max-width:760px){
 if (!developerDocs.includes('class="code-panel"') || !developerDocs.includes('class="doc-note"')) {
   throw new Error("Developer Docs is missing styled code or safety-note panels.");
 }
-\nconst terms = fs.readFileSync(path.join(site, "terms.html"), "utf8");
+const terms = fs.readFileSync(path.join(site, "terms.html"), "utf8");
 for (const phrase of ["Simulation Lab", "Local Control Room", "commercial SaaS", "development"]) {
   if (!terms.toLowerCase().includes(phrase.toLowerCase())) throw new Error("Terms of Use is missing boundary disclosure: " + phrase);
 }
