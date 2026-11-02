@@ -6,7 +6,7 @@ const root = path.resolve(__dirname, "..");
 const site = path.join(root, "simulation-studio");
 const corporatePages = [
   "index.html", "platform.html", "technology.html", "security.html",
-  "research.html", "company.html", "contact.html", "privacy.html", "404.html"
+  "research.html", "company.html", "contact.html", "privacy.html", "terms.html", "404.html"
 ];
 const toolPages = ["lab.html", "local-console.html"];
 const allPages = [...corporatePages, ...toolPages];
@@ -100,8 +100,12 @@ for (const page of ["platform.html", "technology.html", "security.html", "resear
   if (!home.includes("./" + page)) throw new Error("Homepage is missing navigation to " + page);
 }
 
+const terms = fs.readFileSync(path.join(site, "terms.html"), "utf8");
+for (const phrase of ["Simulation Lab", "Local Control Room", "mock", "development"]) {
+  if (!terms.toLowerCase().includes(phrase.toLowerCase())) throw new Error("Terms of Use is missing boundary disclosure: " + phrase);
+}
 const sitemap = fs.readFileSync(path.join(site, "sitemap.xml"), "utf8");
-for (const page of ["platform.html", "technology.html", "security.html", "research.html", "company.html", "contact.html", "privacy.html"]) {
+for (const page of ["platform.html", "technology.html", "security.html", "research.html", "company.html", "contact.html", "privacy.html", "terms.html"]) {
   if (!sitemap.includes("/" + page)) throw new Error("Sitemap is missing " + page);
 }
 console.log("Custos website validation passed: corporate pages, standalone tools, local links, bilingual controls, threat model, sitemap, and demo behavior.");
