@@ -21,7 +21,7 @@ h1{font-size:28px;margin:0 0 5px}h2{font-size:16px;margin:0 0 15px}.intro{color:
 label{display:block;font-size:12px;color:var(--muted);margin:11px 0 5px}input,select,textarea{width:100%;border:1px solid #31475c;border-radius:9px;background:#0a1420;color:var(--text);padding:10px 11px;outline:none}input:focus,select:focus,textarea:focus{border-color:var(--cyan);box-shadow:0 0 0 2px #59d8df22}textarea{min-height:112px;resize:vertical;font:12px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace}
 button{border:1px solid #365168;background:#1a2b3e;color:var(--text);border-radius:9px;padding:9px 12px;font-weight:650;cursor:pointer}button:hover{border-color:var(--cyan)}button.primary{background:linear-gradient(120deg,#2d8f99,#426fc0);border:0;color:white}button.danger{border-color:#8b4851;color:#ff9ca4;background:#351c25}button:disabled{opacity:.45;cursor:not-allowed}
 .note{color:var(--muted);font-size:12px;margin:10px 0 0}.status{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--muted)}.dot{width:8px;height:8px;border-radius:50%;background:#8799aa}.dot.ok{background:var(--green)}.dot.bad{background:var(--red)}
-.toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px;flex-wrap:wrap}.result{padding:12px;background:#08111b;border:1px solid #26394c;border-radius:10px;min-height:80px;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;color:#c9d8e6;margin-top:12px}
+.toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px;flex-wrap:wrap}.result{padding:12px;background:#08111b;border:1px solid #26394c;border-radius:10px;min-height:80px;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;color:#c9d8e6;margin-top:12px}.result.uncertain{border-color:#b78b43;background:#211a0e;color:#f2d9a4}
 .approval-list{display:grid;gap:8px;margin-top:12px}.approval{border:1px solid var(--line);border-radius:10px;padding:10px;background:#0b1622;cursor:pointer}.approval.selected{border-color:var(--cyan)}.approval strong{display:block;font-size:12px}.approval small{color:var(--muted);overflow-wrap:anywhere}
 .warning{border-left:3px solid var(--yellow);background:#2a2417;padding:10px 12px;border-radius:7px;color:#e9d7ad;font-size:12px;margin-top:12px}.foot{color:#758ba0;font-size:11px;margin-top:20px}
 @media(max-width:780px){.grid{grid-template-columns:1fr}.wide{grid-column:auto}.wrap{padding:20px 13px 40px}header{align-items:flex-start}.headright{flex-wrap:wrap;justify-content:flex-end}.badge{display:none}.row{flex-direction:column;align-items:stretch}.toolbar{align-items:stretch}.toolbar button{flex:1}}
@@ -109,9 +109,9 @@ intro:"Connect this hosted console to a Custos API running on your own computer.
 connectTitle:"1. Local connection and credentials",endpointLabel:"Local API endpoint",agentTokenLabel:"Agent Bearer token",reviewerTokenLabel:"Reviewer Bearer token",connectBtn:"Test connection",notConnected:"Not connected",clearTokens:"Clear tokens",securityNote:"Tokens are held only in this page's memory and are not saved to localStorage. Use this page only from the official Custos GitHub Pages origin. Never share a screenshot containing your credentials.",
 requestTitle:"2. Submit an agent request",actionLabel:"Action",resourceLabel:"Resource",requestIdLabel:"Request ID (reuse for safe retries)",newId:"New ID",paramsLabel:"Parameters (JSON object)",submitBtn:"Submit request to gateway",noRequest:"No request submitted.",
 approvalTitle:"3. Human approval queue",approvalDesc:"Reviewer credentials are required to inspect and decide pending requests.",refreshApprovals:"Refresh pending approvals",pending:"pending",noApprovalData:"No approval data loaded.",selectedApprovalLabel:"Selected approval ID",approveBtn:"Approve",denyBtn:"Deny",executeBtn:"Execute approved request",noApprovalAction:"No approval action performed.",
-howTitle:"4. How this works",howText:"Agent request → Python policy gateway → ALLOW / HUMAN_APPROVAL / BLOCK. Approval-required requests are stored in local SQLite. A reviewer decides, then the original agent may execute the exact approved request once. Every decision is appended to the local hash-chained audit log.",
+howTitle:"4. How this works",howText:"Agent request → Python policy gateway → ALLOW / HUMAN_APPROVAL / BLOCK. If the provider response is lost, Custos returns EXECUTION_UNKNOWN with executed=null. Re-submit the same request ID to reconcile the provider receipt; do not create a new ID while the outcome is unknown. Every decision is appended to the local hash-chained audit log.",
 footer:"This console is a thin client for the local prototype. It does not make the backend production-safe, and it does not connect to a real database, email provider, or agent tool. Stop the API server when you are finished.",backLink:"← Back to Simulation Lab",
-connected:"Local API connection successful",healthFailed:"Connection failed",cleared:"Credentials cleared from this page.",missingAgent:"Enter the agent token first.",missingReviewer:"Enter the reviewer token first.",badEndpoint:"Endpoint must use http and point to localhost or 127.0.0.1.",badParams:"Parameters must be a valid JSON object.",requestFailed:"Request failed",approvalsFailed:"Could not load approvals",emptyQueue:"No pending approvals.",approveSuccess:"Approval decision recorded",denySuccess:"Denial recorded",executeSuccess:"Execution completed (mock adapter)",selectApproval:"Select or enter an approval ID.",replayed:"This was an idempotent replay. The gateway did not dispatch a second action.",newRequest:"Request ID generated.",
+connected:"Local API connection successful",healthFailed:"Connection failed",cleared:"Credentials cleared from this page.",missingAgent:"Enter the agent token first.",missingReviewer:"Enter the reviewer token first.",badEndpoint:"Endpoint must use http and point to localhost or 127.0.0.1.",badParams:"Parameters must be a valid JSON object.",requestFailed:"Request failed",approvalsFailed:"Could not load approvals",emptyQueue:"No pending approvals.",approveSuccess:"Approval decision recorded",denySuccess:"Denial recorded",executeSuccess:"Execution completed (mock adapter)",selectApproval:"Select or enter an approval ID.",replayed:"This was an idempotent replay. The gateway did not dispatch a second action.",newRequest:"Request ID generated.",executionUnknown:"Execution outcome is unknown. Keep this request ID and submit the same request again to reconcile the provider receipt. Do not create a new ID or repeat the operation under a different ID.",
 sendEmail:"send_email (requires approval)",blocked:"disable_custos (blocked)"
 },
 ko:{
@@ -120,9 +120,9 @@ intro:"현재 페이지를 사용자 컴퓨터에서 실행 중인 Custos API에
 connectTitle:"1. 로컬 연결 및 인증 정보",endpointLabel:"로컬 API 주소",agentTokenLabel:"Agent Bearer 토큰",reviewerTokenLabel:"검토자 Bearer 토큰",connectBtn:"연결 테스트",notConnected:"연결되지 않음",clearTokens:"토큰 지우기",securityNote:"토큰은 이 페이지의 메모리에만 보관하며 localStorage에 저장하지 않습니다. 공식 Custos GitHub Pages 주소에서만 사용하세요. 인증 정보가 보이는 화면을 공유하지 마세요.",
 requestTitle:"2. Agent 요청 제출",actionLabel:"행동",resourceLabel:"리소스",requestIdLabel:"요청 ID (재시도 시 동일한 ID 사용)",newId:"새 ID",paramsLabel:"매개변수 (JSON 객체)",submitBtn:"게이트웨이에 요청 제출",noRequest:"아직 제출한 요청이 없습니다.",
 approvalTitle:"3. 인간 승인 대기열",approvalDesc:"대기 중인 요청을 확인하고 판정하려면 검토자 인증 정보가 필요합니다.",refreshApprovals:"승인 대기열 새로고침",pending:"건 대기",noApprovalData:"승인 데이터를 불러오지 않았습니다.",selectedApprovalLabel:"선택한 승인 ID",approveBtn:"승인",denyBtn:"거부",executeBtn:"승인된 요청 실행",noApprovalAction:"아직 승인 작업을 수행하지 않았습니다.",
-howTitle:"4. 작동 방식",howText:"Agent 요청 → Python 정책 게이트웨이 → ALLOW / HUMAN_APPROVAL / BLOCK. 승인이 필요한 요청은 로컬 SQLite에 저장됩니다. 검토자가 판정한 뒤 최초 요청 Agent만 동일한 승인 요청을 한 번 실행할 수 있습니다. 모든 판정은 로컬 해시 연결 감사 로그에 기록됩니다.",
+howTitle:"4. 작동 방식",howText:"Agent 요청 → Python 정책 게이트웨이 → ALLOW / HUMAN_APPROVAL / BLOCK. 제공자 응답을 받지 못하면 EXECUTION_UNKNOWN과 executed=null을 반환합니다. 같은 요청 ID로 다시 제출해 제공자 영수증을 확인하고, 결과가 불확실한 동안 새 ID를 만들거나 다른 ID로 재실행하지 마세요. 모든 판정은 로컬 해시 연결 감사 로그에 기록됩니다.",
 footer:"이 콘솔은 로컬 프로토타입을 위한 얇은 클라이언트입니다. 백엔드를 상용 보안 제품으로 만들지는 않으며 실제 데이터베이스, 이메일 서비스, Agent 도구에도 연결되지 않습니다. 사용이 끝나면 API 서버를 종료하세요.",backLink:"← Simulation Lab로 돌아가기",
-connected:"로컬 API 연결 성공",healthFailed:"연결 실패",cleared:"이 페이지의 인증 정보를 지웠습니다.",missingAgent:"Agent 토큰을 입력하세요.",missingReviewer:"검토자 토큰을 입력하세요.",badEndpoint:"주소는 http이며 localhost 또는 127.0.0.1이어야 합니다.",badParams:"매개변수는 올바른 JSON 객체여야 합니다.",requestFailed:"요청 실패",approvalsFailed:"승인 대기열을 불러오지 못했습니다.",emptyQueue:"승인 대기 중인 요청이 없습니다.",approveSuccess:"승인 판정을 기록했습니다.",denySuccess:"거부 판정을 기록했습니다.",executeSuccess:"실행 완료 (모의 어댑터)",selectApproval:"승인 ID를 선택하거나 입력하세요.",replayed:"멱등성 재요청입니다. 게이트웨이는 두 번째 작업을 실행하지 않았습니다.",newRequest:"요청 ID를 생성했습니다.",
+connected:"로컬 API 연결 성공",healthFailed:"연결 실패",cleared:"이 페이지의 인증 정보를 지웠습니다.",missingAgent:"Agent 토큰을 입력하세요.",missingReviewer:"검토자 토큰을 입력하세요.",badEndpoint:"주소는 http이며 localhost 또는 127.0.0.1이어야 합니다.",badParams:"매개변수는 올바른 JSON 객체여야 합니다.",requestFailed:"요청 실패",approvalsFailed:"승인 대기열을 불러오지 못했습니다.",emptyQueue:"승인 대기 중인 요청이 없습니다.",approveSuccess:"승인 판정을 기록했습니다.",denySuccess:"거부 판정을 기록했습니다.",executeSuccess:"실행 완료 (모의 어댑터)",selectApproval:"승인 ID를 선택하거나 입력하세요.",replayed:"멱등성 재요청입니다. 게이트웨이는 두 번째 작업을 실행하지 않았습니다.",newRequest:"요청 ID를 생성했습니다.",executionUnknown:"실행 결과가 불확실합니다. 이 요청 ID를 유지하고 같은 요청을 다시 제출해 제공자 영수증을 확인하세요. 새 ID를 만들거나 다른 ID로 같은 작업을 다시 실행하지 마세요.",
 sendEmail:"send_email (승인 필요)",blocked:"disable_custos (차단됨)"
 }}
 function setLanguage(next){
@@ -138,6 +138,15 @@ function setLanguage(next){
  $("ko").classList.toggle("active",next==="ko");$("en").classList.toggle("active",next==="en");
 }
 function setResult(el,value){el.textContent=typeof value==="string"?value:JSON.stringify(value,null,2)}
+ function setOutcome(el,result){
+  if(result&&result.decision==="EXECUTION_UNKNOWN"){
+   el.classList.add("uncertain");
+   setResult(el,{notice:text[language].executionUnknown,response:result});
+  }else{
+   el.classList.remove("uncertain");
+   setResult(el,result);
+  }
+ }
 function baseUrl(){
  let u;
  try{u=new URL($("endpoint").value.trim())}catch(e){throw new Error(text[language].badEndpoint)}
@@ -196,10 +205,15 @@ $("submitBtn").addEventListener("click",async()=>{
   if(!parameters||Array.isArray(parameters)||typeof parameters!=="object")throw new Error(text[language].badParams);
   const body={action:$("action").value,resource:$("resource").value,parameters:parameters,request_id:$("requestId").value.trim()};
   const result=await api("/v1/requests","POST",body,token);
-  setResult($("requestResult"),result);
+  setOutcome($("requestResult"),result);
   if(result.replayed) $("requestResult").textContent+="\n\n"+text[language].replayed;
-  if(result.approval_id)$("selectedApproval").value=result.approval_id;
-  else if(result.decision==="ALLOW") $("requestId").value=freshId();
+  if(result.decision==="EXECUTION_UNKNOWN"){
+   $("newId").disabled=true;
+  }else{
+   $("newId").disabled=false;
+   if(result.approval_id)$("selectedApproval").value=result.approval_id;
+   else if(result.decision==="ALLOW") $("requestId").value=freshId();
+  }
  }catch(e){setResult($("requestResult"),text[language].requestFailed+": "+e.message)}
 });
 async function refreshApprovals(){
@@ -238,8 +252,16 @@ $("executeBtn").addEventListener("click",async()=>{
   const token=requireAgent();const id=$("selectedApproval").value.trim();
   if(!id)throw new Error(text[language].selectApproval);
   const result=await api("/v1/approvals/"+encodeURIComponent(id)+"/execute","POST",{},token);
-  setResult($("approvalResult"),result);
-  if(result.executed)setResult($("approvalResult"),{notice:text[language].executeSuccess,result:result});
+  setOutcome($("approvalResult"),result);
+  if(result.decision==="EXECUTION_UNKNOWN"){
+   $("newId").disabled=true;
+  }else{
+   $("newId").disabled=false;
+   if(result.executed){
+    setResult($("approvalResult"),{notice:text[language].executeSuccess,result:result});
+    $("requestId").value=freshId();
+   }
+  }
   await refreshApprovals();
  }catch(e){setResult($("approvalResult"),e.message)}
 });
