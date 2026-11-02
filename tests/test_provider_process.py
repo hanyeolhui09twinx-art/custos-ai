@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import socket
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -15,7 +16,7 @@ from urllib.request import Request, urlopen
 
 from audit_log import AuditLog
 from custos_gateway import (
-    ActionRequest, ApprovalStore, CustosGateway, DispatchAuthority,
+    ActionRequest, ApprovalStore, CustosGateway, DispatchAuthority, DispatchOutcomeUnknown,
 )
 from custos_provider import HttpToolProviderAdapter
 
@@ -112,6 +113,15 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         except HTTPError as exc:
             return exc.code, json.loads(exc.read().decode("utf-8"))
 
+    @classmethod
+    def _get_receipt(cls, agent_id: str, request_id: str) -> tuple[int, dict]:
+        url = f"http://127.0.0.1:{cls.port}/v1/receipts/{agent_id}/{request_id}"
+        try:
+            with urlopen(url, timeout=3) as response:
+                return response.status, json.loads(response.read().decode("utf-8"))
+        except HTTPError as exc:
+            return exc.code, json.loads(exc.read().decode("utf-8"))
+
     def test_gateway_dispatches_through_a_separate_provider_process(self) -> None:
         request = self._request("gateway-provider-001")
         gateway = CustosGateway(
@@ -197,6 +207,94 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         second_status, _ = self._post(payload)
         self.assertEqual(second_status, 403)
 
+    def test_same_request_id_returns_persisted_result_without_second_execution(self) -> None:
+        request = self._request("provider-idempotent-001")
+        first_status, first = self._post({
+            "request": request.to_dict(), "permit": self._permit(request).__dict__,
+        })
+        second_status, second = self._post({
+            "request": request.to_dict(), "permit": self._permit(request).__dict__,
+        })
+        self.assertEqual(first_status, 200)
+        self.assertEqual(second_status, 200)
+        self.assertEqual(first["result"], second["result"])
+        receipt_status, receipt = self._get_receipt(request.agent_id, request.request_id)
+        self.assertEqual(receipt_status, 200)
+        self.assertEqual(receipt["receipt"]["status"], "completed")
+        self.assertEqual(receipt["receipt"]["request_digest"], request.digest)
+
+    def test_same_request_id_with_different_digest_is_rejected(self) -> None:
+        original = self._request("provider-idempotency-conflict-001")
+        first_status, _ = self._post({
+            "request": original.to_dict(), "permit": self._permit(original).__dict__,
+        })
+        self.assertEqual(first_status, 200)
+        changed = ActionRequest.from_payload(
+            original.agent_id,
+            {
+                "action": original.action,
+                "resource": original.resource,
+                "parameters": {"query": "different"},
+                "request_id": original.request_id,
+            },
+        )
+        status, payload = self._post({
+            "request": changed.to_dict(), "permit": self._permit(changed).__dict__,
+        })
+        self.assertEqual(status, 409)
+        self.assertEqual(payload.get("code"), "idempotency_conflict")
+
+    def test_interrupted_execution_becomes_indeterminate_after_restart(self) -> None:
+        request = self._request("provider-interrupted-001")
+        now = time.time()
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """INSERT INTO execution_receipts
+                   (agent_id, request_id, request_digest, status, result_json, created_at, updated_at)
+                   VALUES (?, ?, ?, 'executing', NULL, ?, ?)""",
+                (request.agent_id, request.request_id, request.digest, now, now),
+            )
+        self._stop_provider()
+        self._start_provider()
+        receipt_status, receipt = self._get_receipt(request.agent_id, request.request_id)
+        self.assertEqual(receipt_status, 200)
+        self.assertEqual(receipt["receipt"]["status"], "indeterminate")
+        status, payload = self._post({
+            "request": request.to_dict(), "permit": self._permit(request).__dict__,
+        })
+        self.assertEqual(status, 409)
+        self.assertEqual(payload.get("code"), "execution_outcome_unknown")
+
+    def test_gateway_reconciles_a_lost_response_from_provider_receipt(self) -> None:
+        request = self._request("gateway-reconcile-001")
+        delegate = HttpToolProviderAdapter(self.endpoint)
+
+        class DropFirstResponse:
+            def execute(self, candidate):
+                return delegate.execute(candidate)
+
+            def execute_with_permit(self, candidate, permit):
+                delegate.execute_with_permit(candidate, permit)
+                raise DispatchOutcomeUnknown("Simulated response loss after provider completion.")
+
+            def get_receipt(self, agent_id, request_id):
+                return delegate.get_receipt(agent_id, request_id)
+
+        gateway = CustosGateway(
+            store=ApprovalStore(self.root / "reconcile-approvals.sqlite3"),
+            audit_log=AuditLog(str(self.root / "reconcile-audit.jsonl")),
+            adapter=DropFirstResponse(),
+            dispatch_signing_key=SIGNING_KEY,
+        )
+        first = gateway.submit(request)
+        self.assertEqual(first["decision"], "EXECUTION_UNKNOWN")
+        self.assertIsNone(first["executed"])
+        second = gateway.submit(request)
+        self.assertEqual(second["decision"], "ALLOW")
+        self.assertTrue(second["executed"])
+        self.assertTrue(second["reconciled"])
+        self.assertEqual(second["result"]["request_id"], request.request_id)
+
     def test_gateway_fails_closed_when_provider_is_unavailable(self) -> None:
         self._stop_provider()
         request = self._request("provider-offline-001")
@@ -207,8 +305,9 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
             dispatch_signing_key=SIGNING_KEY,
         )
         result = gateway.submit(request)
-        self.assertEqual(result["decision"], "BLOCK")
-        self.assertFalse(result["executed"])
+        self.assertEqual(result["decision"], "EXECUTION_UNKNOWN")
+        self.assertIsNone(result["executed"])
+        self.assertEqual(result["execution_status"], "unknown")
         self._start_provider()
 
     def test_provider_endpoint_rejects_non_loopback_addresses(self) -> None:
