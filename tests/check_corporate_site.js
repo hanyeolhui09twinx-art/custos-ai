@@ -22,6 +22,16 @@ for (const file of allPages) {
   const html = fs.readFileSync(path.join(site, file), "utf8");
   if (!/<title>[^<]+<\/title>/i.test(html)) throw new Error(file + ": missing title");
   if (!/name="description"/i.test(html)) throw new Error(file + ": missing meta description");
+  if (!/<html lang="(?:ko|en)"/i.test(html)) throw new Error(file + ": missing document language.");
+  if ((html.match(/<h1\b/gi) || []).length !== 1) throw new Error(file + ": expected exactly one primary h1 heading.");
+  for (const imageTag of (html.match(/<img\b[^>]*>/gi) || [])) {
+    if (!/\balt="/i.test(imageTag)) throw new Error(file + ": image missing alternative text.");
+  }
+  for (const anchor of (html.match(/<a\b[^>]*target="_blank"[^>]*>/gi) || [])) {
+    if (!/\brel="[^"]*(?:noopener)[^"]*"/i.test(anchor)) {
+      throw new Error(file + ": new-tab links must include rel=noopener.");
+    }
+  }
   if (file !== "404.html" && (!/rel="canonical"/.test(html) || !/rel="icon"/.test(html))) {
     throw new Error(file + ": missing canonical URL or branded favicon");
   }
@@ -245,6 +255,9 @@ const fakeSession = {getItem: () => null, setItem: () => {}};
 vm.runInNewContext(js, {document: fakeDocument, window: {}, sessionStorage: fakeSession});
 
 demoEmail.click();
+if (demoEmail.getAttribute("aria-pressed") !== "true" || demoRead.getAttribute("aria-pressed") !== "false") {
+  throw new Error("Selecting a scenario must update the accessible pressed state.");
+}
 demoRun.click();
 if (demoElements.demoDecision.textContent !== "인간 승인 필요" || demoElements.demoReview.hidden) {
   throw new Error("Email scenario must require a visible human approval step.");
@@ -281,12 +294,12 @@ if (demoElements.demoDecision.textContent !== "허용") {
 }
 
 menuToggle.click();
-if (menuToggle.getAttribute("aria-expanded") !== "true" || !mobileNav.classList.contains("open")) {
+if (menuToggle.getAttribute("aria-expanded") !== "true" || menuToggle.getAttribute("aria-label") !== "메뉴 닫기" || !mobileNav.classList.contains("open")) {
   throw new Error("Mobile menu toggle must expose the open state.");
 }
 if (!keyListeners.keydown) throw new Error("Escape key handler was not installed.");
 keyListeners.keydown({key: "Escape"});
-if (menuToggle.getAttribute("aria-expanded") !== "false" || mobileNav.classList.contains("open") || !menuToggle.focused) {
+if (menuToggle.getAttribute("aria-expanded") !== "false" || menuToggle.getAttribute("aria-label") !== "메뉴 열기" || mobileNav.classList.contains("open") || !menuToggle.focused) {
   throw new Error("Escape must close the mobile menu and restore focus to the toggle.");
 }
 console.log("Corporate UI behavior checks passed: policy states, approval flow, bilingual state retention, and keyboard menu control.");
