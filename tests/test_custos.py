@@ -304,6 +304,32 @@ class APITestCase(unittest.TestCase):
         except urllib.error.HTTPError as exc:
             return exc.code, json.loads(exc.read().decode("utf-8"))
 
+    def test_cors_preflight_allows_only_the_official_studio_origin(self) -> None:
+        allowed = urllib.request.Request(
+            self.base_url + "/v1/requests",
+            method="OPTIONS",
+            headers={
+                "Origin": "https://hanyeolhui09twinx-art.github.io",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "authorization,content-type",
+            },
+        )
+        with urllib.request.urlopen(allowed, timeout=3) as response:
+            self.assertEqual(response.status, 204)
+            self.assertEqual(
+                response.headers.get("Access-Control-Allow-Origin"),
+                "https://hanyeolhui09twinx-art.github.io",
+            )
+
+        denied = urllib.request.Request(
+            self.base_url + "/v1/requests",
+            method="OPTIONS",
+            headers={"Origin": "https://untrusted.example"},
+        )
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(denied, timeout=3)
+        self.assertEqual(error.exception.code, 403)
+
     def test_health_and_authentication(self) -> None:
         status, payload = self.request("GET", "/health")
         self.assertEqual(status, 200)
