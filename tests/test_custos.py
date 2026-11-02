@@ -49,6 +49,38 @@ class GatewayTestCase(unittest.TestCase):
             {"action": action, "resource": resource, "parameters": {"query": "market_trends"}},
         )
 
+    def test_gateway_audits_key_ring_changes_without_logging_key_material(self) -> None:
+        root = Path(self.temp.name)
+        db_path = root / "gateway-keyring.sqlite3"
+        audit_path = root / "gateway-keyring-audit.jsonl"
+        key = bytes.fromhex("33" * 32)
+        first = CustosGateway(
+            store=ApprovalStore(db_path),
+            audit_log=AuditLog(str(audit_path)),
+            dispatch_signing_keys={"active-v1": key},
+            active_dispatch_key_id="active-v1",
+        )
+        self.assertEqual(first._dispatch_authority.active_key_id, "active-v1")
+        second = CustosGateway(
+            store=ApprovalStore(db_path),
+            audit_log=AuditLog(str(audit_path)),
+            dispatch_signing_keys={"active-v2": bytes.fromhex("44" * 32)},
+            active_dispatch_key_id="active-v2",
+        )
+        self.assertEqual(second._dispatch_authority.active_key_id, "active-v2")
+        entries = [
+            json.loads(line)
+            for line in audit_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        events = [entry["event"] for entry in entries]
+        self.assertIn("DISPATCH_KEYRING_INITIALIZED", events)
+        self.assertIn("DISPATCH_KEY_REGISTERED", events)
+        self.assertIn("DISPATCH_KEY_REVOKED", events)
+        self.assertIn("DISPATCH_KEY_ACTIVATED", events)
+        self.assertNotIn(key.hex(), audit_path.read_text(encoding="utf-8"))
+        self.assertTrue(AuditLog(str(audit_path)).verify())
+
     def test_allow_reaches_only_mock_adapter(self) -> None:
         result = self.gateway.submit(self.request())
         self.assertEqual(result["decision"], Decision.ALLOW.value)
