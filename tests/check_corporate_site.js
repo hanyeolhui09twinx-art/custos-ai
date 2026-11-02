@@ -376,20 +376,24 @@ const demoDisable = new FakeElement({"data-demo-case": "disable"});
 const copyButton = new FakeElement({"data-copy-code": "#setup-code", "data-ko": "코드 복사", "data-en": "Copy code"});
 const setupCode = new FakeElement();
 setupCode.innerText = "$env:CUSTOS_AGENT_TOKENS = 'test-token'";
+const fallbackButton = new FakeElement({"data-copy-code": "#fallback-code", "data-ko": "코드 복사", "data-en": "Copy code"});
+const fallbackCode = new FakeElement();
+fallbackCode.innerText = "fallback snippet";
+let selectedCopyNode = null;
 let copiedSnippet = "";
 const demoRun = new FakeElement();
 const demoApprove = new FakeElement();
 const demoDeny = new FakeElement();
 const selectorResults = {
   "[data-lang-button]": [langKo, langEn],
-  "[data-ko][data-en]": [copyButton],
+  "[data-ko][data-en]": [copyButton, fallbackButton],
   "[data-placeholder-ko][data-placeholder-en]": [],
   "[data-menu-toggle]": [menuToggle],
   "[data-mobile-nav]": [mobileNav],
   "[data-nav]": [],
   ".reveal": [],
   "[data-demo-case]": [demoRead, demoEmail, demoDisable],
-  "[data-copy-code]": [copyButton]
+  "[data-copy-code]": [copyButton, fallbackButton]
 };
 const singleResults = {
   "[data-menu-toggle]": menuToggle,
@@ -397,7 +401,8 @@ const singleResults = {
   "[data-demo-run]": demoRun,
   "[data-demo-approve]": demoApprove,
   "[data-demo-deny]": demoDeny,
-  "#setup-code": setupCode
+  "#setup-code": setupCode,
+  "#fallback-code": fallbackCode
 };
 const keyListeners = {};
 const fakeDocument = {
@@ -406,15 +411,20 @@ const fakeDocument = {
   querySelectorAll: selector => selectorResults[selector] || [],
   querySelector: selector => singleResults[selector] || null,
   getElementById: id => demoElements[id] || null,
+  createRange: () => ({selectNodeContents: node => { selectedCopyNode = node; }}),
   addEventListener: (name, callback) => { keyListeners[name] = callback; }
 };
 const fakeSession = {getItem: () => null, setItem: () => {}};
 vm.runInNewContext(js, {
   document: fakeDocument,
-  window: {navigator: {clipboard: {writeText: value => {
-    copiedSnippet = value;
-    return {then: callback => { callback(); return {catch: () => {}}; }};
-  }}}},
+  window: {
+    navigator: {clipboard: {writeText: value => {
+      if (value === "fallback snippet") return {then: () => ({catch: callback => { callback(); }})};
+      copiedSnippet = value;
+      return {then: callback => { callback(); return {catch: () => {}}; }};
+    }}},
+    getSelection: () => ({removeAllRanges: () => {}, addRange: () => {}})
+  },
   sessionStorage: fakeSession
 });
 
@@ -469,5 +479,9 @@ if (menuToggle.getAttribute("aria-expanded") !== "false" || menuToggle.getAttrib
 copyButton.click();
 if (copiedSnippet !== setupCode.innerText || copyButton.textContent !== "복사됨") {
   throw new Error("Developer code copy control must write the selected snippet and announce success.");
+}
+fallbackButton.click();
+if (selectedCopyNode !== fallbackCode || fallbackButton.textContent !== "선택됨 · Ctrl+C") {
+  throw new Error("Developer code copy control must select the snippet when clipboard access is denied.");
 }
 console.log("Corporate UI behavior checks passed: policy states, approval flow, bilingual state retention, keyboard menu control, and code-copy behavior.");
