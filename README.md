@@ -132,6 +132,8 @@ Clients must send a stable `request_id` and reuse it for every retry of the same
 
 When the gateway submits a request but does not receive a definite provider response, it returns `decision: "EXECUTION_UNKNOWN"` and `executed: null`. Submit the **same** request ID again to reconcile against the provider receipt. A confirmed completed receipt resolves to the stored result; an `executing` or `indeterminate` receipt remains unresolved. A missing receipt is not treated as proof that the request was never accepted, so Custos does not automatically dispatch again. Do not generate a new request ID to retry an uncertain operation.
 
+On gateway startup, any local request receipt left in `processing` is changed to `indeterminate`. The next same-ID request first looks for an existing request-bound approval, then checks the provider receipt. It can recover a pending approval without creating a second approval ID, or recover a completed provider result without redispatch. If neither source can prove the outcome, it stays `EXECUTION_UNKNOWN`.
+
 ## Contributing\n\nSee [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, engineering expectations, required tests, and security rules. Pull requests use a structured checklist in `.github/PULL_REQUEST_TEMPLATE.md`.\n\n## Feedback and collaboration\n\nGitHub Issues includes structured templates for reproducible bug reports and research/collaboration proposals. Public issues should never include secrets, customer data, or confidential details.\n\n## Automated checks and deployment
 
 GitHub Actions runs:
