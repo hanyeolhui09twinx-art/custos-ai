@@ -305,6 +305,143 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         self.assertEqual(status, 409)
         self.assertEqual(payload.get("code"), "execution_outcome_unknown")
 
+    def _insert_gateway_processing_receipt(self, db_path: Path, request: ActionRequest) -> None:
+        store = ApprovalStore(db_path)
+        with sqlite3.connect(db_path) as conn:
+            conn.execute(
+                """INSERT INTO request_receipts
+                   (agent_id, request_id, request_digest, status, response_json, created_at)
+                   VALUES (?, ?, ?, 'processing', NULL, ?)""",
+                (request.agent_id, request.request_id, request.digest, time.time()),
+            )
+        self.assertIsNotNone(store.get_request_result(request.agent_id, request.request_id))
+
+    def test_gateway_restart_reconciles_provider_completion_before_request_receipt_commit(self) -> None:
+        request = self._request("gateway-restart-completed-001")
+        delegate = HttpToolProviderAdapter(self.endpoint)
+        permit = DispatchAuthority(signing_key=SIGNING_KEY).issue(request, mode="ALLOW")
+        provider_result = delegate.execute_with_permit(request, permit)
+
+        db_path = self.root / "gateway-crash-after-provider.sqlite3"
+        self._insert_gateway_processing_receipt(db_path, request)
+        restarted_store = ApprovalStore(db_path)
+        gateway = CustosGateway(
+            store=restarted_store,
+            audit_log=AuditLog(str(self.root / "gateway-crash-after-provider-audit.jsonl")),
+            adapter=delegate,
+            dispatch_signing_key=SIGNING_KEY,
+        )
+        result = gateway.submit(request)
+        self.assertEqual(result["decision"], "ALLOW")
+        self.assertTrue(result["executed"])
+        self.assertTrue(result["reconciled"])
+        self.assertTrue(result["recovered"])
+        self.assertEqual(result["result"], provider_result)
+        self.assertEqual(
+            restarted_store.get_request_result(request.agent_id, request.request_id)["status"],
+            "completed",
+        )
+
+    def test_gateway_restart_without_provider_receipt_stays_unknown_and_never_redispatches(self) -> None:
+        request = self._request("gateway-restart-no-provider-receipt-001")
+        db_path = self.root / "gateway-crash-no-provider.sqlite3"
+        self._insert_gateway_processing_receipt(db_path, request)
+        gateway = CustosGateway(
+            store=ApprovalStore(db_path),
+            audit_log=AuditLog(str(self.root / "gateway-crash-no-provider-audit.jsonl")),
+            adapter=HttpToolProviderAdapter(self.endpoint),
+            dispatch_signing_key=SIGNING_KEY,
+        )
+        first = gateway.submit(request)
+        second = gateway.submit(request)
+        self.assertEqual(first["decision"], "EXECUTION_UNKNOWN")
+        self.assertEqual(second["decision"], "EXECUTION_UNKNOWN")
+        self.assertIsNone(first["executed"])
+        self.assertEqual(first["reconciliation_status"], "receipt_not_found")
+        self.assertEqual(self._get_receipt(request.agent_id, request.request_id)[0], 404)
+        self.assertEqual(
+            gateway.store.get_request_result(request.agent_id, request.request_id)["status"],
+            "indeterminate",
+        )
+
+    def test_gateway_restart_recovers_existing_pending_approval_without_duplicate(self) -> None:
+        request = ActionRequest.from_payload(
+            "research_agent",
+            {
+                "action": "send_email",
+                "resource": "company_email",
+                "parameters": {"to": "pending-recovery@example.test"},
+                "request_id": "gateway-restart-pending-approval-001",
+            },
+        )
+        db_path = self.root / "gateway-pending-approval.sqlite3"
+        store = ApprovalStore(db_path)
+        approval_id = store.create(request, 300, time.time())
+        with sqlite3.connect(db_path) as conn:
+            conn.execute(
+                """INSERT INTO request_receipts
+                   (agent_id, request_id, request_digest, status, response_json, created_at)
+                   VALUES (?, ?, ?, 'processing', NULL, ?)""",
+                (request.agent_id, request.request_id, request.digest, time.time()),
+            )
+        gateway = CustosGateway(
+            store=ApprovalStore(db_path),
+            audit_log=AuditLog(str(self.root / "gateway-pending-approval-audit.jsonl")),
+            adapter=HttpToolProviderAdapter(self.endpoint),
+            dispatch_signing_key=SIGNING_KEY,
+        )
+        recovered = gateway.submit(request)
+        self.assertEqual(recovered["decision"], "HUMAN_APPROVAL")
+        self.assertEqual(recovered["approval_id"], approval_id)
+        self.assertEqual(recovered["status"], "pending")
+        with sqlite3.connect(db_path) as conn:
+            count = conn.execute(
+                "SELECT COUNT(*) FROM approvals WHERE request_digest=?",
+                (request.digest,),
+            ).fetchone()[0]
+        self.assertEqual(count, 1)
+
+    def test_approved_execution_restart_reconciles_provider_receipt(self) -> None:
+        request = ActionRequest.from_payload(
+            "research_agent",
+            {
+                "action": "send_email",
+                "resource": "company_email",
+                "parameters": {"to": "approved-recovery@example.test"},
+                "request_id": "gateway-restart-approved-execution-001",
+            },
+        )
+        db_path = self.root / "gateway-approved-recovery.sqlite3"
+        store = ApprovalStore(db_path)
+        delegate = HttpToolProviderAdapter(self.endpoint)
+        original_gateway = CustosGateway(
+            store=store,
+            audit_log=AuditLog(str(self.root / "gateway-approved-before-crash-audit.jsonl")),
+            adapter=delegate,
+            dispatch_signing_key=SIGNING_KEY,
+        )
+        pending = original_gateway.submit(request)
+        approval_id = pending["approval_id"]
+        original_gateway.review_approval(approval_id, "recovery-reviewer", True)
+        claimed_request = store.claim_for_execution(approval_id, request.agent_id)
+        permit = DispatchAuthority(signing_key=SIGNING_KEY).issue(
+            claimed_request, mode="APPROVED", approval_id=approval_id,
+        )
+        provider_result = delegate.execute_with_permit(claimed_request, permit)
+
+        restarted = CustosGateway(
+            store=ApprovalStore(db_path),
+            audit_log=AuditLog(str(self.root / "gateway-approved-after-crash-audit.jsonl")),
+            adapter=delegate,
+            dispatch_signing_key=SIGNING_KEY,
+        )
+        recovered = restarted.execute_approved(approval_id, request.agent_id)
+        self.assertEqual(recovered["decision"], "ALLOW")
+        self.assertTrue(recovered["executed"])
+        self.assertTrue(recovered["reconciled"])
+        self.assertEqual(recovered["result"], provider_result)
+        self.assertEqual(restarted.store.get(approval_id)["status"], "executed")
+
     def test_gateway_reconciles_a_lost_response_from_provider_receipt(self) -> None:
         request = self._request("gateway-reconcile-001")
         delegate = HttpToolProviderAdapter(self.endpoint)
