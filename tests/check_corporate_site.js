@@ -123,6 +123,7 @@ if (!js.includes('event.key==="Escape"')) throw new Error("Mobile navigation mus
 if (!js.includes('toggle.focus()')) throw new Error("Escape handling must restore focus to the menu toggle.");
 
 const security = fs.readFileSync(path.join(site, "security.html"), "utf8");
+if (!security.includes("SECURITY.md")) throw new Error("Security page must link the responsible disclosure policy.");
 for (const lens of ["/ASSUMPTIONS", "/BLINDSPOT", "/COUNTER", "/EDGECASE", "/SELFCRITIQUE"]) {
   if (!security.includes(lens)) throw new Error("Security page is missing threat-model section " + lens);
 }
