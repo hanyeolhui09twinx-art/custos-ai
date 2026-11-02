@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Callable, Protocol
 
 from audit_log import AuditLog
+from keyring_audit import KeyRingLifecycle
 
 IDENTIFIER_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_.:-]{0,127}$")
 REQUEST_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$")
@@ -275,6 +276,18 @@ class DispatchAuthority:
         self._used_nonces: dict[str, float] = {}
         self._max_active_nonces = 100_000
         self._lock = threading.Lock()
+        self._key_fingerprints = {
+            key_id: hashlib.sha256(key_value).hexdigest()
+            for key_id, key_value in keys.items()
+        }
+
+    @property
+    def active_key_id(self) -> str:
+        return self._active_key_id
+
+    @property
+    def key_fingerprints(self) -> dict[str, str]:
+        return dict(self._key_fingerprints)
 
     @staticmethod
     def _claims(permit: DispatchPermit) -> dict[str, Any]:
@@ -837,6 +850,10 @@ class CustosGateway:
             signing_keys=dispatch_signing_keys,
             active_key_id=active_dispatch_key_id,
         )
+        if dispatch_signing_key is not None or dispatch_signing_keys is not None:
+            KeyRingLifecycle(
+                self.store.db_path, self.audit_log, component="gateway"
+            ).observe(self._dispatch_authority.key_fingerprints, self._dispatch_authority.active_key_id)
         self.adapter = GuardedExecutionAdapter(
             delegate=adapter or MockExecutionAdapter(),
             policy_engine=self.policy_engine,
