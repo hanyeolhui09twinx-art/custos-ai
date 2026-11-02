@@ -423,7 +423,7 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         pending = original_gateway.submit(request)
         approval_id = pending["approval_id"]
         original_gateway.review_approval(approval_id, "recovery-reviewer", True)
-        claimed_request = store.claim_for_execution(approval_id, request.agent_id)
+        claimed_request = store.claim_for_execution(approval_id, request.agent_id, time.time())
         permit = DispatchAuthority(signing_key=SIGNING_KEY).issue(
             claimed_request, mode="APPROVED", approval_id=approval_id,
         )
