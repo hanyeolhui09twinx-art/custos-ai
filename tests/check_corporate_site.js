@@ -73,3 +73,10 @@ for (const page of ["platform.html", "technology.html", "security.html", "resear
   if (!sitemap.includes("/" + page)) throw new Error("Sitemap is missing " + page);
 }
 console.log("Custos website validation passed: corporate pages, standalone tools, local links, bilingual controls, threat model, sitemap, and demo behavior.");
+
+const lab = fs.readFileSync(path.join(site, "lab.html"), "utf8");
+if (!lab.includes('href="./index.html"')) throw new Error("Lab is missing a return link to the corporate website.");
+const localConsole = fs.readFileSync(path.join(site, "local-console.html"), "utf8");
+if (!localConsole.includes('href="./lab.html"') || !localConsole.includes('href="./index.html"')) {
+  throw new Error("Local Control Room must link back to both the Lab and corporate website.");
+}
