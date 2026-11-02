@@ -131,6 +131,19 @@ const home = fs.readFileSync(path.join(site, "index.html"), "utf8");
 if (!home.includes("TARGET ARCHITECTURE") || !home.includes("the current Python execution adapter is a mock")) {
   throw new Error("Homepage architecture diagram must be labeled as a conceptual target, not live enforcement.");
 }
+if (!home.includes('class="flow-routing"') || !home.includes("CONDITIONAL ROUTING")) {
+  throw new Error("Homepage architecture must show conditional policy routing.");
+}
+for (const phrase of ["ALLOW", "HUMAN_APPROVAL", "BLOCK", "Only ALLOW", "BLOCK stops here", "DISPATCH RE-CHECK", "LOCAL TRACE"]) {
+  if (!home.includes(phrase)) throw new Error("Homepage conditional flow is missing: " + phrase);
+}
+if (home.includes("<strong>HUMAN AUTHORITY</strong>")) {
+  throw new Error("Homepage must not present human review as mandatory for every request.");
+}
+if (!css.includes(".flow-routing{") || !css.includes(".flow-outcomes{") ||
+    !css.includes("@media(max-width:460px){.flow-outcomes{grid-template-columns:1fr}")) {
+  throw new Error("Conditional routing diagram is missing responsive layout styles.");
+}
 for (const phrase of ["CURRENT BUILD / 03 NOV 2026", "IMPLEMENTED LOCALLY", "SIMULATED", "NOT YET INTEGRATED", "MockExecutionAdapter", "real agent framework"]) {
   if (!home.toLowerCase().includes(phrase.toLowerCase())) throw new Error("Homepage prototype-status panel is missing: " + phrase);
 }
@@ -183,10 +196,10 @@ for (const page of ["platform.html", "technology.html", "security.html", "resear
 }
 
 const updates = fs.readFileSync(path.join(site, "updates.html"), "utf8");
-for (const phrase of ["DAY 001", "DAY 002", "DAY 003", "DAY 004", "DAY 005", "NOT VERIFIED", "mock execution adapter", "real-agent bypass resistance"]) {
+for (const phrase of ["DAY 001", "DAY 002", "DAY 003", "DAY 004", "DAY 005", "DAY 006", "NOT VERIFIED", "mock execution adapter", "real-agent bypass resistance"]) {
   if (!updates.toLowerCase().includes(phrase.toLowerCase())) throw new Error("Updates page is missing factual status item: " + phrase);
 }
-for (const log of ["day-001.md", "day-002.md", "day-003.md", "day-004.md", "day-005.md"]) {
+for (const log of ["day-001.md", "day-002.md", "day-003.md", "day-004.md", "day-005.md", "day-006.md"]) {
   if (!updates.includes(log)) throw new Error("Updates page is missing the source development log: " + log);
 }
 
