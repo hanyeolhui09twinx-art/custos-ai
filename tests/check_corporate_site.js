@@ -197,6 +197,9 @@ if (!css.includes(".reveal{opacity:1;transform:none}") || !css.includes(".js-mot
 if (!js.includes('root.classList.add("js-motion")')) {
   throw new Error("Motion enhancement must be enabled only after JavaScript starts.");
 }
+if (!css.includes(".reveal,.js-motion .reveal{opacity:1;transform:none;transition:none}")) {
+  throw new Error("Reduced-motion mode must override the JavaScript reveal state.");
+}
 if (!css.includes("@media(prefers-reduced-motion:reduce)")) {
   throw new Error("Reduced-motion preference must remain supported.");
 }
