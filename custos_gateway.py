@@ -119,8 +119,8 @@ class ActionRequest:
         try:
             copied_parameters = json.loads(canonical_json(parameters))
             encoded = canonical_json(copied_parameters).encode("utf-8")
-        except (TypeError, ValueError) as exc:
-            raise ValueError("parameters must contain finite JSON-compatible values.") from exc
+        except (TypeError, ValueError, RecursionError) as exc:
+            raise ValueError("parameters must contain finite, bounded JSON-compatible values.") from exc
 
         if len(encoded) > MAX_PARAMETERS_BYTES:
             raise ValueError(f"parameters exceed the {MAX_PARAMETERS_BYTES}-byte limit.")
