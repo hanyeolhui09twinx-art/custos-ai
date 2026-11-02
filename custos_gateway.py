@@ -559,6 +559,20 @@ class ApprovalStore:
             if cursor.rowcount != 1:
                 raise ApprovalConflict("Completed request receipt was not found.")
 
+    def get_request_result(self, agent_id: str, request_id: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT request_digest, status, response_json FROM request_receipts WHERE agent_id=? AND request_id=?",
+                (agent_id, request_id),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "request_digest": row["request_digest"],
+            "status": row["status"],
+            "response": json.loads(row["response_json"]) if row["response_json"] else None,
+        }
+
     def create(self, request: ActionRequest, ttl_seconds: int, now: float) -> str:
         approval_id = str(uuid.uuid4())
         with self._connect() as conn:
@@ -676,6 +690,23 @@ class ApprovalStore:
             and stored.get("request_id") == request.request_id
         )
 
+
+    def resolve_indeterminate_execution(
+        self,
+        approval_id: str,
+        status: str,
+        result: dict[str, Any],
+    ) -> None:
+        if status != "executed":
+            raise ValueError("Only a provider-confirmed completion can resolve as executed.")
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """UPDATE approvals SET status='executed', result_json=?
+                   WHERE approval_id=? AND status='indeterminate'""",
+                (canonical_json(result), approval_id),
+            )
+            if cursor.rowcount != 1:
+                raise ApprovalConflict("Indeterminate approval state could not be reconciled.")
 
     def finish_execution(self, approval_id: str, status: str, result: dict[str, Any] | None = None) -> None:
         if status not in {"executed", "failed", "blocked", "indeterminate"}:
@@ -943,6 +974,31 @@ class CustosGateway:
         ]
 
     def execute_approved(self, approval_id: str, agent_id: str) -> dict[str, Any]:
+        existing = self.store.get(approval_id)
+        if existing is not None and existing["status"] == "indeterminate":
+            request_data = existing["request"]
+            if request_data.get("agent_id") != agent_id:
+                raise ApprovalForbidden("Only the requesting agent may reconcile this approval.")
+            request = ActionRequest.from_payload(
+                request_data["agent_id"],
+                {
+                    "action": request_data["action"],
+                    "resource": request_data["resource"],
+                    "parameters": request_data["parameters"],
+                    "request_id": request_data["request_id"],
+                },
+            )
+            cached_row = self.store.get_request_result(agent_id, request.request_id)
+            cached_response = cached_row.get("response") if cached_row else None
+            if not isinstance(cached_response, dict) or cached_response.get("decision") != "EXECUTION_UNKNOWN":
+                raise ApprovalConflict("Approval is indeterminate but no execution-unknown receipt is available.")
+            reconciled = self.reconcile_execution(request, cached_response)
+            if reconciled.get("reconciled") and reconciled.get("execution_status") == "completed":
+                self.store.resolve_indeterminate_execution(
+                    approval_id, "executed", reconciled.get("result", {})
+                )
+            return reconciled
+
         request = self.store.claim_for_execution(approval_id, agent_id, self.clock())
         try:
             decision, reason = self.policy_engine.evaluate(request)
