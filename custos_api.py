@@ -173,6 +173,8 @@ def create_server(
                     self._send(401, {"error": str(exc)})
                 except ValueError as exc:
                     self._send(400, {"error": str(exc)})
+                except ApprovalError as exc:
+                    self._approval_error(exc)
                 except Exception:
                     self._send(500, {"error": "Internal gateway error."})
                 return
