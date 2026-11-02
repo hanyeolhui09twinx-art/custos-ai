@@ -163,3 +163,5 @@
 .flow-routing-note{margin:8px 0 0;color:#b2c0ba;font-size:8px;line-height:1.65}
 @media(max-width:760px){.flow-routing-head{font-size:7px}.flow-outcome strong{font-size:7px}}
 @media(max-width:460px){.flow-outcomes{grid-template-columns:1fr}.flow-outcome{display:grid;grid-template-columns:minmax(112px,.65fr) 1fr;align-items:center;gap:8px}.flow-outcome small{margin-top:0}}
+
+.flow-route-continue{margin-top:9px;padding-top:8px;border-top:1px dashed #526b73;color:#b8d1bb;text-align:center;font:7px var(--mono);letter-spacing:.06em}
