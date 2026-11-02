@@ -18,7 +18,7 @@ from audit_log import AuditLog
 from custos_gateway import (
     ActionRequest, ApprovalStore, CustosGateway, DispatchAuthority, DispatchOutcomeUnknown,
 )
-from custos_provider import HttpToolProviderAdapter
+from custos_provider import HttpToolProviderAdapter, RECEIPT_SIGNATURE_HEADER, receipt_lookup_signature
 
 ROOT = Path(__file__).resolve().parents[1]
 SIGNING_KEY = bytes.fromhex("ab" * 32)
@@ -115,9 +115,14 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
 
     @classmethod
     def _get_receipt(cls, agent_id: str, request_id: str) -> tuple[int, dict]:
-        url = f"http://127.0.0.1:{cls.port}/v1/receipts/{agent_id}/{request_id}"
+        path = f"/v1/receipts/{agent_id}/{request_id}"
+        url = f"http://127.0.0.1:{cls.port}{path}"
+        headers = {
+            RECEIPT_SIGNATURE_HEADER: receipt_lookup_signature(SIGNING_KEY, path),
+        }
+        req = Request(url, headers=headers, method="GET")
         try:
-            with urlopen(url, timeout=3) as response:
+            with urlopen(req, timeout=3) as response:
                 return response.status, json.loads(response.read().decode("utf-8"))
         except HTTPError as exc:
             return exc.code, json.loads(exc.read().decode("utf-8"))
@@ -127,7 +132,7 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         gateway = CustosGateway(
             store=ApprovalStore(self.root / "gateway-approvals.sqlite3"),
             audit_log=AuditLog(str(self.root / "gateway-audit.jsonl")),
-            adapter=HttpToolProviderAdapter(self.endpoint),
+            adapter=HttpToolProviderAdapter(self.endpoint, receipt_signing_key=SIGNING_KEY),
             dispatch_signing_key=SIGNING_KEY,
         )
         result = gateway.submit(request)
@@ -148,7 +153,7 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         gateway = CustosGateway(
             store=ApprovalStore(self.root / "approved-approvals.sqlite3"),
             audit_log=AuditLog(str(self.root / "approved-audit.jsonl")),
-            adapter=HttpToolProviderAdapter(self.endpoint),
+            adapter=HttpToolProviderAdapter(self.endpoint, receipt_signing_key=SIGNING_KEY),
             dispatch_signing_key=SIGNING_KEY,
         )
         pending = gateway.submit(request)
@@ -170,7 +175,7 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
                 "request_id": "approved-reconcile-001",
             },
         )
-        delegate = HttpToolProviderAdapter(self.endpoint)
+        delegate = HttpToolProviderAdapter(self.endpoint, receipt_signing_key=SIGNING_KEY)
 
         class DropApprovedResponse:
             def execute(self, candidate):
@@ -199,6 +204,34 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         self.assertEqual(second["decision"], "ALLOW")
         self.assertTrue(second["reconciled"])
         self.assertEqual(gateway.store.get(approval_id)["status"], "executed")
+
+    def test_provider_receipt_lookup_requires_a_valid_hmac_signature(self) -> None:
+        request = self._request("provider-receipt-auth-001")
+        status, _ = self._post({
+            "request": request.to_dict(),
+            "permit": self._permit(request).__dict__,
+        })
+        self.assertEqual(status, 200)
+
+        path = f"/v1/receipts/{request.agent_id}/{request.request_id}"
+        url = f"http://127.0.0.1:{self.port}{path}"
+        unauthenticated = Request(url, method="GET")
+        with self.assertRaises(HTTPError) as missing:
+            urlopen(unauthenticated, timeout=3)
+        self.assertEqual(missing.exception.code, 401)
+
+        forged = Request(
+            url,
+            method="GET",
+            headers={RECEIPT_SIGNATURE_HEADER: "0" * 64},
+        )
+        with self.assertRaises(HTTPError) as invalid:
+            urlopen(forged, timeout=3)
+        self.assertEqual(invalid.exception.code, 403)
+
+        verified_status, verified = self._get_receipt(request.agent_id, request.request_id)
+        self.assertEqual(verified_status, 200)
+        self.assertEqual(verified["receipt"]["request_digest"], request.digest)
 
     def test_provider_rejects_missing_forged_and_request_substituted_permits(self) -> None:
         request = self._request("provider-invalid-001")
@@ -318,7 +351,7 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
 
     def test_gateway_restart_reconciles_provider_completion_before_request_receipt_commit(self) -> None:
         request = self._request("gateway-restart-completed-001")
-        delegate = HttpToolProviderAdapter(self.endpoint)
+        delegate = HttpToolProviderAdapter(self.endpoint, receipt_signing_key=SIGNING_KEY)
         permit = DispatchAuthority(signing_key=SIGNING_KEY).issue(request, mode="ALLOW")
         provider_result = delegate.execute_with_permit(request, permit)
 
@@ -349,7 +382,7 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         gateway = CustosGateway(
             store=ApprovalStore(db_path),
             audit_log=AuditLog(str(self.root / "gateway-crash-no-provider-audit.jsonl")),
-            adapter=HttpToolProviderAdapter(self.endpoint),
+            adapter=HttpToolProviderAdapter(self.endpoint, receipt_signing_key=SIGNING_KEY),
             dispatch_signing_key=SIGNING_KEY,
         )
         first = gateway.submit(request)
@@ -387,7 +420,7 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         gateway = CustosGateway(
             store=ApprovalStore(db_path),
             audit_log=AuditLog(str(self.root / "gateway-pending-approval-audit.jsonl")),
-            adapter=HttpToolProviderAdapter(self.endpoint),
+            adapter=HttpToolProviderAdapter(self.endpoint, receipt_signing_key=SIGNING_KEY),
             dispatch_signing_key=SIGNING_KEY,
         )
         recovered = gateway.submit(request)
@@ -413,7 +446,7 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         )
         db_path = self.root / "gateway-approved-recovery.sqlite3"
         store = ApprovalStore(db_path)
-        delegate = HttpToolProviderAdapter(self.endpoint)
+        delegate = HttpToolProviderAdapter(self.endpoint, receipt_signing_key=SIGNING_KEY)
         original_gateway = CustosGateway(
             store=store,
             audit_log=AuditLog(str(self.root / "gateway-approved-before-crash-audit.jsonl")),
@@ -444,7 +477,7 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
 
     def test_gateway_reconciles_a_lost_response_from_provider_receipt(self) -> None:
         request = self._request("gateway-reconcile-001")
-        delegate = HttpToolProviderAdapter(self.endpoint)
+        delegate = HttpToolProviderAdapter(self.endpoint, receipt_signing_key=SIGNING_KEY)
 
         class DropFirstResponse:
             def execute(self, candidate):
@@ -478,7 +511,7 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         gateway = CustosGateway(
             store=ApprovalStore(self.root / "offline-approvals.sqlite3"),
             audit_log=AuditLog(str(self.root / "offline-audit.jsonl")),
-            adapter=HttpToolProviderAdapter(self.endpoint, timeout_seconds=0.25),
+            adapter=HttpToolProviderAdapter(self.endpoint, timeout_seconds=0.25, receipt_signing_key=SIGNING_KEY),
             dispatch_signing_key=SIGNING_KEY,
         )
         result = gateway.submit(request)
