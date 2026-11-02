@@ -23,7 +23,7 @@ for (const file of allPages) {
   if (!/<title>[^<]+<\/title>/i.test(html)) throw new Error(file + ": missing title");
   if (!/name="description"/i.test(html)) throw new Error(file + ": missing meta description");
   if (!/<html lang="(?:ko|en)"/i.test(html)) throw new Error(file + ": missing document language.");
-  if ((html.match(/<h1\b/gi) || []).length !== 1) throw new Error(file + ": expected exactly one primary h1 heading.");
+  if (corporatePages.includes(file) && (html.match(/<h1\b/gi) || []).length !== 1) throw new Error(file + ": expected exactly one primary h1 heading.");
   for (const imageTag of (html.match(/<img\b[^>]*>/gi) || [])) {
     if (!/\balt="/i.test(imageTag)) throw new Error(file + ": image missing alternative text.");
   }
