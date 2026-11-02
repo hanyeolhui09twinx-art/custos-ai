@@ -122,8 +122,8 @@ def create_server(
             raw = self.rfile.read(length)
             try:
                 value = json.loads(raw.decode("utf-8"))
-            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-                raise ValueError("Request body must be valid UTF-8 JSON.") from exc
+            except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
+                raise ValueError("Request body must be valid, bounded UTF-8 JSON.") from exc
             if not isinstance(value, dict):
                 raise ValueError("Request body must be a JSON object.")
             return value
