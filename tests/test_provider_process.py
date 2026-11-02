@@ -54,13 +54,20 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         cls,
         signing_keys: dict[str, bytes] | None = None,
         active_key_id: str = ACTIVE_KEY_ID,
+        legacy_single_key: bytes | None = None,
     ) -> None:
         env = os.environ.copy()
-        configured_keys = signing_keys or KEY_RING
-        env["CUSTOS_DISPATCH_KEYS"] = json.dumps({
-            key_id: key_value.hex() for key_id, key_value in configured_keys.items()
-        })
-        env["CUSTOS_ACTIVE_DISPATCH_KEY_ID"] = active_key_id
+        if legacy_single_key is not None:
+            env.pop("CUSTOS_DISPATCH_KEYS", None)
+            env.pop("CUSTOS_ACTIVE_DISPATCH_KEY_ID", None)
+            env["CUSTOS_DISPATCH_SIGNING_KEY"] = legacy_single_key.hex()
+        else:
+            configured_keys = signing_keys or KEY_RING
+            env.pop("CUSTOS_DISPATCH_SIGNING_KEY", None)
+            env["CUSTOS_DISPATCH_KEYS"] = json.dumps({
+                key_id: key_value.hex() for key_id, key_value in configured_keys.items()
+            })
+            env["CUSTOS_ACTIVE_DISPATCH_KEY_ID"] = active_key_id
         cls.process = subprocess.Popen(
             [
                 sys.executable, str(ROOT / "custos_provider.py"),
@@ -324,6 +331,26 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
             status, body = self._post(payload)
             self.assertEqual(status, 403)
             self.assertEqual(body.get("code"), "dispatch_denied")
+
+            receipt_request = self._request("provider-retired-receipt-key-001")
+            accepted, _ = self._post({
+                "request": receipt_request.to_dict(),
+                "permit": self._permit_with_key(receipt_request, "v2", V2_KEY).__dict__,
+            })
+            self.assertEqual(accepted, 200)
+            receipt_path = f"/v1/receipts/{receipt_request.agent_id}/{receipt_request.request_id}"
+            receipt_url = f"http://127.0.0.1:{self.port}{receipt_path}"
+            retired_lookup = Request(
+                receipt_url,
+                method="GET",
+                headers={
+                    RECEIPT_KEY_ID_HEADER: "legacy",
+                    RECEIPT_SIGNATURE_HEADER: receipt_lookup_signature(LEGACY_KEY, receipt_path, "legacy"),
+                },
+            )
+            with self.assertRaises(HTTPError) as retired:
+                urlopen(retired_lookup, timeout=3)
+            self.assertEqual(retired.exception.code, 403)
         finally:
             self._stop_provider()
             self._start_provider(signing_keys=KEY_RING, active_key_id="default")
@@ -370,6 +397,28 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         verified_status, verified = self._get_receipt(request.agent_id, request.request_id)
         self.assertEqual(verified_status, 200)
         self.assertEqual(verified["receipt"]["request_digest"], request.digest)
+
+    def test_provider_supports_legacy_single_key_environment_configuration(self) -> None:
+        self._stop_provider()
+        try:
+            self._start_provider(legacy_single_key=SIGNING_KEY)
+            request = self._request("provider-legacy-single-key-001")
+            permit = self._permit(request)
+            status, response = self._post({
+                "request": request.to_dict(),
+                "permit": permit.__dict__,
+            })
+            self.assertEqual(status, 200)
+            adapter = HttpToolProviderAdapter(
+                self.endpoint,
+                receipt_signing_key=SIGNING_KEY,
+            )
+            receipt = adapter.get_receipt(request.agent_id, request.request_id)
+            self.assertEqual(receipt["request_digest"], request.digest)
+            self.assertEqual(response["result"]["request_id"], request.request_id)
+        finally:
+            self._stop_provider()
+            self._start_provider(signing_keys=KEY_RING, active_key_id="default")
 
     def test_provider_rejects_missing_forged_and_request_substituted_permits(self) -> None:
         request = self._request("provider-invalid-001")
