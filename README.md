@@ -193,6 +193,7 @@ GitHub Actions runs:
 - Corporate website route, canonical URL, sitemap, local-link, bilingual navigation, accessibility, contrast, issue-template, and threat-model checks.
 - Deterministic Node-based UI behavior checks for policy decisions, approval/denial, language switching, and keyboard navigation.
 - Chromium Playwright checks for all fourteen corporate routes at nine viewport widths (320–1024px), including horizontal-overflow detection, 960px tablet-navigation behavior, mobile keyboard/focus handling, local links, language switching, Media Room preview, and reduced-motion behavior. This is Chromium coverage, not full cross-browser or physical-device certification.
+- Optional OpenAI Agents SDK integration contract tests install the pinned `openai-agents==0.24.0` dependency and invoke the actual `FunctionTool` runtime against a local Custos API. These tests do not call a model API; all successful tool executions use the mock adapter.
 - GitHub Pages deployment when files under `simulation-studio/` change.
 
 ## Security and implementation limits
@@ -235,3 +236,4 @@ Custos should currently be described as a local research prototype with a mock e
 - [Day 015 — Read-only Security Operations](devlog/day-015.md)
 - [Day 016 — Human Agency Preservation corporate platform](devlog/day-016.md)
 - [Day 017 — Responsive corporate site verification](devlog/day-017.md)
+- [Day 018 — OpenAI Agents SDK mediation adapter](devlog/day-018.md)
