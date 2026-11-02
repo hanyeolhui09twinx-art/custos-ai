@@ -48,3 +48,14 @@
 .cta .btn{background:var(--navy);border-color:var(--navy)}
 .cta .btn:hover{background:#284b5b;border-color:#284b5b}
 .section-head h2 em,.intro-band h2 em,.cap-num,.resource-card .kind,.resource-card .go{color:var(--accent-dark)}
+
+/* Developer documentation panels */
+.code-panel{background:var(--navy);color:#e5eeea;border:1px solid #294252;margin:18px 0;overflow:hidden}
+.code-head{display:flex;justify-content:space-between;gap:15px;padding:11px 16px;border-bottom:1px solid #294252;color:#9eb8b1;font:8px var(--mono);letter-spacing:.12em}
+.code-panel pre{margin:0;padding:20px;overflow-x:auto;tab-size:2;white-space:pre;color:#e3eee8;font:11px/1.85 var(--mono)}
+.code-panel code{font:inherit;color:inherit;white-space:pre}
+.doc-note{margin:18px 0;padding:18px 22px;background:#f9fbf8;border:1px solid var(--line);border-left:3px solid var(--accent-dark);font-size:11px}
+.doc-note strong{display:block;color:var(--ink);font-size:12px}
+.doc-note p{margin:7px 0;color:var(--muted);line-height:1.85}
+.doc-note a{font-weight:700;color:var(--accent-dark);text-decoration:underline;text-underline-offset:3px}
+@media(max-width:760px){.code-head{flex-direction:column;gap:4px}.code-panel pre{padding:15px;font-size:10px}.doc-note{padding:15px}}
