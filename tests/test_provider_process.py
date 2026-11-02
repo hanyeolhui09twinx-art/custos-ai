@@ -420,6 +420,41 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
             self._stop_provider()
             self._start_provider(signing_keys=KEY_RING, active_key_id="default")
 
+    def test_provider_startup_audits_emergency_key_revocation(self) -> None:
+        self._stop_provider()
+        try:
+            self._start_provider(signing_keys=KEY_RING, active_key_id="default")
+            request = self._request("provider-emergency-revoke-001")
+            compromised_permit = self._permit_with_key(request, "legacy", LEGACY_KEY)
+
+            self._stop_provider()
+            self._start_provider(
+                signing_keys={"default": SIGNING_KEY},
+                active_key_id="default",
+            )
+            status, body = self._post({
+                "request": request.to_dict(),
+                "permit": compromised_permit.__dict__,
+            })
+            self.assertEqual(status, 403)
+            self.assertEqual(body.get("code"), "dispatch_denied")
+
+            audit_path = self.db_path.with_suffix(".audit.jsonl")
+            with audit_path.open("r", encoding="utf-8") as handle:
+                entries = [json.loads(line) for line in handle if line.strip()]
+            revoked = [
+                entry for entry in entries
+                if entry.get("event") == "DISPATCH_KEY_REVOKED"
+                and entry.get("data", {}).get("component") == "provider"
+                and entry.get("data", {}).get("key_id") == "legacy"
+            ]
+            self.assertTrue(revoked)
+            self.assertTrue(AuditLog(str(audit_path)).verify())
+            self.assertNotIn(LEGACY_KEY.hex(), audit_path.read_text(encoding="utf-8"))
+        finally:
+            self._stop_provider()
+            self._start_provider(signing_keys=KEY_RING, active_key_id="default")
+
     def test_provider_rejects_missing_forged_and_request_substituted_permits(self) -> None:
         request = self._request("provider-invalid-001")
         self.assertEqual(self._post({"request": request.to_dict()})[0], 403)
