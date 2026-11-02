@@ -37,6 +37,12 @@ Run the browser console source checks:
 node tests/check_studio_console.js
 ~~~
 
+Run the browser Simulation Lab behavior checks:
+
+~~~bash
+node tests/check_simulation_lab.js
+~~~
+
 Run the corporate website route, content, and interaction checks:
 
 ~~~bash
