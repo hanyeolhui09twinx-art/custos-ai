@@ -529,7 +529,17 @@
                   "type": "number"
                 },
                 "status": {
-                  "type": "string"
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "approved",
+                    "denied",
+                    "expired",
+                    "executing",
+                    "executed",
+                    "blocked",
+                    "failed"
+                  ]
                 }
               }
             }
