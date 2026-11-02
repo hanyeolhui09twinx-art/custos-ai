@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from concurrent.futures import ThreadPoolExecutor
 import math
 import tempfile
@@ -20,6 +21,7 @@ from custos_gateway import (
     ApprovalStore,
     CustosGateway,
     Decision,
+    DispatchAuthorizationError,
     MockExecutionAdapter,
 )
 
@@ -53,6 +55,95 @@ class GatewayTestCase(unittest.TestCase):
         self.assertTrue(result["executed"])
         self.assertEqual(len(self.adapter.executed), 1)
         self.assertEqual(self.adapter.executed[0]["status"], "simulated")
+
+    def test_guarded_adapter_rejects_missing_and_forged_permits(self) -> None:
+        request = self.request()
+        with self.assertRaises(DispatchAuthorizationError):
+            self.gateway.adapter.execute(request, None)
+
+        permit = self.gateway._dispatch_authority.issue(request, mode="ALLOW")
+        forged = replace(permit, signature="0" * 64)
+        with self.assertRaises(DispatchAuthorizationError):
+            self.gateway.adapter.execute(request, forged)
+        self.assertEqual(self.adapter.executed, [])
+
+    def test_dispatch_permit_is_bound_to_exact_request_payload(self) -> None:
+        request = self.request()
+        permit = self.gateway._dispatch_authority.issue(request, mode="ALLOW")
+        altered = ActionRequest.from_payload(
+            request.agent_id,
+            {
+                "action": request.action,
+                "resource": request.resource,
+                "parameters": {"query": "different_payload"},
+                "request_id": request.request_id,
+            },
+        )
+        with self.assertRaises(DispatchAuthorizationError):
+            self.gateway.adapter.execute(altered, permit)
+        self.assertEqual(self.adapter.executed, [])
+
+    def test_dispatch_permit_is_expiring_and_single_use(self) -> None:
+        request = self.request()
+        permit = self.gateway._dispatch_authority.issue(request, mode="ALLOW")
+        self.now[0] += 16
+        with self.assertRaises(DispatchAuthorizationError):
+            self.gateway.adapter.execute(request, permit)
+        self.assertEqual(self.adapter.executed, [])
+
+        self.now[0] -= 16
+        fresh = self.gateway._dispatch_authority.issue(request, mode="ALLOW")
+        result = self.gateway.adapter.execute(request, fresh)
+        self.assertEqual(result["status"], "simulated")
+        with self.assertRaises(DispatchAuthorizationError):
+            self.gateway.adapter.execute(request, fresh)
+        self.assertEqual(len(self.adapter.executed), 1)
+
+    def test_adapter_rechecks_policy_at_the_tool_boundary(self) -> None:
+        request = self.request()
+        permit = self.gateway._dispatch_authority.issue(request, mode="ALLOW")
+        self.gateway.policy_engine.policies = {}
+        with self.assertRaises(DispatchAuthorizationError):
+            self.gateway.adapter.execute(request, permit)
+        self.assertEqual(self.adapter.executed, [])
+
+    def test_approved_permit_requires_a_live_exact_approval_claim(self) -> None:
+        request = self.request("send_email", "company_email")
+        fake = self.gateway._dispatch_authority.issue(
+            request,
+            mode="APPROVED",
+            approval_id="not-a-real-approval",
+        )
+        with self.assertRaises(DispatchAuthorizationError):
+            self.gateway.adapter.execute(request, fake)
+        self.assertEqual(self.adapter.executed, [])
+
+    def test_approval_claim_cannot_authorize_a_different_request(self) -> None:
+        original = self.request("send_email", "company_email")
+        created = self.gateway.submit(original)
+        approval_id = created["approval_id"]
+        self.gateway.review_approval(approval_id, "reviewer-1", True)
+        claimed = self.store.claim_for_execution(approval_id, original.agent_id, self.now[0])
+
+        altered = ActionRequest.from_payload(
+            original.agent_id,
+            {
+                "action": original.action,
+                "resource": original.resource,
+                "parameters": {"query": "changed-after-review"},
+                "request_id": "changed-request-id",
+            },
+        )
+        permit = self.gateway._dispatch_authority.issue(
+            altered,
+            mode="APPROVED",
+            approval_id=approval_id,
+        )
+        with self.assertRaises(DispatchAuthorizationError):
+            self.gateway.adapter.execute(altered, permit)
+        self.assertEqual(self.adapter.executed, [])
+        self.assertTrue(self.store.verify_execution_claim(approval_id, claimed))
+
 
     def test_unknown_action_and_resource_fail_closed(self) -> None:
         result = self.gateway.submit(self.request("delete_database", "research_db"))
