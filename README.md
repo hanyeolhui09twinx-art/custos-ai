@@ -10,23 +10,22 @@ Custos is an early-stage research prototype for evaluating autonomous-agent acti
 
 ### 1. Browser Simulation Studio
 
-The [bilingual Simulation Studio](https://hanyeolhui09twinx-art.github.io/custos-ai/) is a static browser-only sandbox.
+The [bilingual Simulation Studio](https://hanyeolhui09twinx-art.github.io/custos-ai/) is a static browser sandbox.
 
 - Korean / English interface
 - 13 predefined scenarios
 - Policy decision, human approval/denial, sequential and Multi-Agent simulations
 - Pause/resume, browser-local history, and trace/report export
+- A separate Local API Console that can call a locally running Python gateway
 
-**Boundary:** the hosted Studio does not call the Python API or control real agents. Its actions and side effects are simulated in the browser. See [the Studio guide](simulation-studio/README.md).
+**Boundary:** the main Studio simulates actions in the browser. The Local API Console can connect to the user's own loopback API, but that backend still uses a mock execution adapter. Neither page connects to a real database, email provider, or production agent tool. See [the Studio guide](simulation-studio/README.md).
 
 ### 2. Python policy gateway and local API
 
-The repository includes a separate, loopback-only API prototype:
-
 - **custos_gateway.py** — deny-by-default policy evaluation, strict request validation, SQLite-backed approval state, request idempotency, dispatch-time policy re-check, and a mock execution adapter.
-- **custos_api.py** — authenticated local HTTP API for agent requests and human-review operations.
+- **custos_api.py** — authenticated local HTTP API for agent requests and human-review operations. It binds to loopback and enables CORS only for the official Custos GitHub Pages origin.
 - **audit_log.py** — local JSONL audit events linked by a SHA-256 hash chain.
-- **tests/test_custos.py** — policy, approval lifecycle, request replay, API authentication, concurrency, and audit-integrity tests.
+- **tests/test_custos.py** — policy, approval lifecycle, request replay, API authentication, concurrency, CORS, and audit-integrity tests.
 
 Default demonstration policy:
 
@@ -40,7 +39,7 @@ Unknown agents, unlisted actions, and out-of-scope resources are denied by defau
 
 ### Request retries
 
-Clients should send a stable request_id and reuse it when retrying the same logical operation. An exact retry returns the cached result and does not dispatch a second time. Reusing the same request_id with a different payload returns a conflict. Requests that are left in processing after a process crash are not automatically reclaimed in this version; they require operator investigation.
+Clients should send a stable request_id and reuse it when retrying the same logical operation. An exact retry returns the cached result and does not dispatch a second time. Reusing the same request_id with a different payload returns a conflict. Requests left in processing after a process crash are not automatically reclaimed in this version; they require operator investigation.
 
 ## Run locally
 
@@ -64,7 +63,7 @@ $env:CUSTOS_REVIEWER_TOKEN='REPLACE_WITH_A_DIFFERENT_RANDOM_TOKEN_OF_32_OR_MORE_
 python custos_api.py
 ~~~
 
-The server binds to 127.0.0.1:8765 by default. Remote binding is rejected in this prototype.
+The server binds to 127.0.0.1:8765 by default. Remote binding is rejected.
 
 ### API routes
 
@@ -93,19 +92,19 @@ Local runtime files are written under .custos-data/ by default and are excluded 
 
 ## Automated checks
 
-GitHub Actions runs Python compilation and the unit/API tests on pushes and pull requests to main. The current suite contains 21 tests.
+GitHub Actions runs Python compilation and the unit/API tests on pushes and pull requests to main.
 
 ## Security and implementation limits
 
-This is **not a production security product**. Current guarantees are deliberately limited:
+This is **not a production security product**:
 
-- The API is a local demonstration service. It has Bearer-token authentication but no TLS, token rotation, user/role directory, rate limiting, or production deployment configuration.
+- The API has Bearer-token authentication but no TLS, token rotation, user/role directory, rate limiting, or production deployment configuration.
 - It binds to loopback only. Do not expose it to a network or connect it to valuable tools.
 - Agent identity is mapped from a configured static token. There is no asymmetric identity, signed request envelope, delegated credential chain, or hardware-backed key protection yet.
 - Approval state is stored in local SQLite. The approval is bound to the immutable request snapshot and is single-use within this service, but there is no distributed transaction with a downstream tool.
 - The mock execution adapter does not prove that a real tool cannot be called directly. A production adapter must enforce authorization at the actual tool boundary and handle timeouts, retries, partial success, and reconciliation.
-- Request receipts are retained indefinitely in this prototype. A request stuck in processing after a crash needs manual investigation.
+- Request receipts are retained indefinitely. A request stuck in processing after a crash needs manual investigation.
 - The JSONL audit log is hash-chained and detects ordinary edits to the recorded chain. It is not immutable against an attacker who can rewrite the entire file. Production needs remote/WORM storage and independent integrity anchoring.
-- The GitHub Pages Studio is still a separate browser simulation and is not integrated with this API.
+- Local API access from the hosted console is gated by the browser's loopback-network permission and CORS. It does not change the backend's prototype limitations.
 
 See [the threat model and engineering self-critique](docs/THREAT_MODEL.md) for assumptions, counterarguments, edge cases, and next verification gates.
