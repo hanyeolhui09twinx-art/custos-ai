@@ -146,6 +146,12 @@ const developerDocs = fs.readFileSync(path.join(site, "developers.html"), "utf8"
 for (const phrase of ["/v1/requests", "/v1/approvals", "request_id", "research_db", "mock execution adapter", "Do not enter production credentials"]) {
   if (!developerDocs.toLowerCase().includes(phrase.toLowerCase())) throw new Error("Developer Docs is missing an implementation detail: " + phrase);
 }
+if (!css.includes(".code-panel pre{") || !css.includes("@media(max-width:760px){.code-head")) {
+  throw new Error("Developer Docs code panels must support responsive horizontal scrolling.");
+}
+if (!developerDocs.includes('class="code-panel"') || !developerDocs.includes('class="doc-note"')) {
+  throw new Error("Developer Docs is missing styled code or safety-note panels.");
+}
 \nconst terms = fs.readFileSync(path.join(site, "terms.html"), "utf8");
 for (const phrase of ["Simulation Lab", "Local Control Room", "commercial SaaS", "development"]) {
   if (!terms.toLowerCase().includes(phrase.toLowerCase())) throw new Error("Terms of Use is missing boundary disclosure: " + phrase);
