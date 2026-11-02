@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 import math
 import tempfile
 import threading
@@ -147,6 +148,90 @@ class GatewayTestCase(unittest.TestCase):
                 {"action": "read_database", "resource": "research_db", "parameters": {"blob": "x" * 20_000}},
             )
 
+    def test_repeated_request_id_returns_cached_result_without_second_execution(self) -> None:
+        request = ActionRequest.from_payload(
+            "research_agent",
+            {
+                "action": "read_database",
+                "resource": "research_db",
+                "parameters": {"query": "market_trends"},
+                "request_id": "stable-request-001",
+            },
+        )
+        first = self.gateway.submit(request)
+        second = self.gateway.submit(request)
+        self.assertTrue(first["executed"])
+        self.assertTrue(second["executed"])
+        self.assertTrue(second["replayed"])
+        self.assertEqual(len(self.adapter.executed), 1)
+
+    def test_reusing_request_id_with_changed_payload_is_rejected(self) -> None:
+        first = ActionRequest.from_payload(
+            "research_agent",
+            {
+                "action": "read_database",
+                "resource": "research_db",
+                "parameters": {"query": "first"},
+                "request_id": "stable-request-002",
+            },
+        )
+        changed = ActionRequest.from_payload(
+            "research_agent",
+            {
+                "action": "read_database",
+                "resource": "research_db",
+                "parameters": {"query": "second"},
+                "request_id": "stable-request-002",
+            },
+        )
+        self.gateway.submit(first)
+        with self.assertRaises(ApprovalConflict):
+            self.gateway.submit(changed)
+        self.assertEqual(len(self.adapter.executed), 1)
+
+    def test_concurrent_approval_execution_is_single_use(self) -> None:
+        result = self.gateway.submit(self.request("send_email", "company_email"))
+        approval_id = result["approval_id"]
+        self.gateway.review_approval(approval_id, "reviewer-1", True)
+
+        def attempt() -> str:
+            try:
+                self.gateway.execute_approved(approval_id, "research_agent")
+                return "executed"
+            except ApprovalConflict:
+                return "conflict"
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            outcomes = list(pool.map(lambda _: attempt(), range(2)))
+        self.assertCountEqual(outcomes, ["executed", "conflict"])
+        self.assertEqual(len(self.adapter.executed), 1)
+
+    def test_modified_approval_payload_is_rejected_before_execution_claim(self) -> None:
+        result = self.gateway.submit(self.request("send_email", "company_email"))
+        approval_id = result["approval_id"]
+        self.gateway.review_approval(approval_id, "reviewer-1", True)
+
+        import sqlite3
+        with sqlite3.connect(Path(self.temp.name) / "approvals.sqlite3") as conn:
+            conn.execute(
+                "UPDATE approvals SET request_json=? WHERE approval_id=?",
+                (
+                    json.dumps({
+                        "agent_id": "research_agent",
+                        "action": "send_email",
+                        "resource": "company_email",
+                        "parameters": {"to": "attacker@example.test"},
+                        "request_id": "modified",
+                    }),
+                    approval_id,
+                ),
+            )
+
+        with self.assertRaises(ApprovalConflict):
+            self.gateway.execute_approved(approval_id, "research_agent")
+        self.assertEqual(self.store.get(approval_id)["status"], "approved")
+        self.assertEqual(self.adapter.executed, [])
+
     def test_audit_log_detects_modified_entry(self) -> None:
         path = Path(self.temp.name) / "tamper.jsonl"
         log = AuditLog(str(path))
@@ -278,6 +363,25 @@ class APITestCase(unittest.TestCase):
             self.AGENT_TOKEN,
         )
         self.assertEqual(status, 409)
+
+    def test_request_retry_is_idempotent_and_payload_conflicts_are_rejected(self) -> None:
+        body = {
+            "action": "read_database",
+            "resource": "research_db",
+            "parameters": {"query": "retry"},
+            "request_id": "api-stable-req-1",
+        }
+        status, first = self.request("POST", "/v1/requests", body, self.AGENT_TOKEN)
+        self.assertEqual(status, 200)
+        status, replay = self.request("POST", "/v1/requests", body, self.AGENT_TOKEN)
+        self.assertEqual(status, 200)
+        self.assertTrue(replay["replayed"])
+
+        changed = dict(body)
+        changed["parameters"] = {"query": "altered"}
+        status, conflict = self.request("POST", "/v1/requests", changed, self.AGENT_TOKEN)
+        self.assertEqual(status, 409)
+        self.assertIn("different payload", conflict["error"])
 
     def test_remote_binding_is_refused(self) -> None:
         with self.assertRaises(ValueError):
