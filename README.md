@@ -33,10 +33,11 @@ The site is built as static HTML, CSS, and JavaScript and deployed through GitHu
 
 ### 1. Python policy gateway and local API
 
-- `custos_gateway.py` — deny-by-default policy evaluation, strict request validation, SQLite-backed approval state, request idempotency, 15-second request-bound HMAC dispatch permits, adapter-boundary policy re-checks, approval-claim verification, and a mock tool registry restricted to exact Action/Resource pairs.
+- `custos_gateway.py` — deny-by-default policy evaluation, strict request validation, SQLite-backed approval state, request idempotency, 15-second request-bound HMAC dispatch permits, adapter-boundary policy re-checks, approval-claim verification, and optional signed dispatch to a separate provider process.
+- `custos_provider.py` — loopback-only mock tool-provider service. It independently verifies gateway permits and records consumed nonces in SQLite before dispatching to the exact mock Action/Resource registry.
 - `custos_api.py` — authenticated local HTTP API. It binds to loopback and allows browser CORS only from the official Custos GitHub Pages origin.
 - `audit_log.py` — local JSONL events linked by a SHA-256 hash chain.
-- `tests/test_custos.py` — policy, approval lifecycle, exact tool-binding checks, dispatch-permit signature/expiry/replay, adapter-boundary revalidation, API authentication, concurrency, CORS, and audit-integrity tests.
+- `tests/test_custos.py` and `tests/test_provider_process.py` — gateway/API controls plus separate-process provider integration tests for missing/forged permits, request substitution, concurrent replay, restart-persistent replay rejection, and provider outage.
 
 Demonstration policy:
 
@@ -46,7 +47,7 @@ Demonstration policy:
 | `research_agent` | `send_email` | `company_email` | HUMAN_APPROVAL, then mock execution |
 | Any configured agent | `disable_custos`, `modify_custos_policy`, `delete_audit_log` | Any | BLOCK |
 
-Unknown agents, unlisted actions, and out-of-scope resources are denied by default. The guarded adapter checks one-time permits and current authorization before calling its delegate. The only configured delegate remains the mock adapter: it does not access a real database, send email, or call external tools. Permit signing and replay tracking are process-local prototype controls, not a production isolation boundary.
+Unknown agents, unlisted actions, and out-of-scope resources are denied by default. The gateway can dispatch to a separate loopback mock-provider process, which independently verifies the signed request-bound permit and persists consumed nonces in SQLite. Its only tool implementation is still the mock adapter: it does not access a real database, send email, or call external tools. The provider is a same-host research harness, not an OS sandbox or production isolation boundary.
 
 ### 2. Browser Simulation Lab
 
@@ -86,6 +87,33 @@ Keep the terminal open while using the [Local Control Room](https://hanyeolhui09
 
 The server binds to `127.0.0.1:8765` by default. Remote binding is rejected.
 
+### Optional separate mock tool-provider process
+
+The following two-terminal setup tests a second local process. Both processes must receive the same temporary HMAC key. Use development-only values.
+
+**Terminal A — start the provider:**
+
+~~~powershell
+$dispatchKey = python -c "import secrets; print(secrets.token_hex(32))"
+$env:CUSTOS_DISPATCH_SIGNING_KEY = $dispatchKey
+Write-Host "Copy this temporary key into Terminal B: $dispatchKey"
+python custos_provider.py --host 127.0.0.1 --port 8766
+~~~
+
+**Terminal B — start the API and route dispatch through the provider:**
+
+~~~powershell
+$env:CUSTOS_DISPATCH_SIGNING_KEY = "<same temporary key from Terminal A>"
+$env:CUSTOS_TOOL_PROVIDER_URL = "http://127.0.0.1:8766/v1/dispatch"
+$agentToken = python -c "import secrets; print(secrets.token_urlsafe(32))"
+$reviewerToken = python -c "import secrets; print(secrets.token_urlsafe(32))"
+$env:CUSTOS_AGENT_TOKENS = '{"research_agent":"' + $agentToken + '"}'
+$env:CUSTOS_REVIEWER_TOKEN = $reviewerToken
+python custos_api.py
+~~~
+
+The gateway sends the request and signed permit; the provider checks the signature, exact request digest, expiry, and durable one-time nonce before invoking its mock registry. The shared development key is not a production key-management design. Both processes still run on one trusted machine, the provider uses loopback HTTP, and no external tools or credentials are connected.
+
 ### API routes
 
 All routes except `GET /health` require a Bearer token.
@@ -119,7 +147,7 @@ This is **not a production security product**:
 - It binds to loopback only. Do not expose it to a network or connect it to valuable tools.
 - Agent identity is mapped from a configured static token. There is no asymmetric identity, signed request envelope, delegated credential chain, or hardware-backed key protection.
 - Approval state is stored in local SQLite. There is no distributed transaction with a downstream tool.
-- The mock execution adapter does not prove that a real tool cannot be called directly. A production adapter must enforce authorization at the actual tool boundary.
+- The separate mock provider verifies dispatch permits in another local process, but it is not an OS sandbox and has no real tool credentials. A production provider needs an independently isolated runtime, scoped credentials, authenticated transport, and enforcement at the actual tool boundary.
 - Raw credential field names are rejected, but this is not general-purpose secret detection. Never place secrets in free-text values.
 - The audit log is hash-chained but not immutable against a privileged actor who can rewrite the entire file.
 - The Local Control Room uses development tokens. The public page code is part of the credential trust boundary; do not enter production secrets.
@@ -142,3 +170,4 @@ Custos should currently be described as a local research prototype with a mock e
 - [Day 006 — Conditional policy flow](devlog/day-006.md)
 - [Day 007 — Simulation Lab reliability](devlog/day-007.md)
 - [Day 008 — Guarded execution boundary](devlog/day-008.md)
+- [Day 009 — Separate mock tool-provider process](devlog/day-009.md)
