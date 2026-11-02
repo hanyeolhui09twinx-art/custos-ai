@@ -63,7 +63,7 @@ if(run)run.addEventListener("click",function(){
  document.getElementById("demoLed").className="decision-led "+c.tone;
  document.getElementById("demoDescription").textContent=language==="ko"?c.ko:c.en;
  var review=document.getElementById("demoReview");pending=c.decision==="HUMAN_APPROVAL";
- if(review)review.classList.toggle("show",pending);
+ if(review){review.hidden=!pending;review.classList.toggle("show",pending);}
 });
 function reviewDemo(decision){
  if(!pending)return;
@@ -71,7 +71,7 @@ function reviewDemo(decision){
  document.getElementById("demoDecision").textContent=approved?(language==="ko"?"승인됨 · 모의 실행":"APPROVED · MOCK"):(language==="ko"?"거부됨 · 실행 차단":"DENIED · BLOCKED");
  document.getElementById("demoLed").className="decision-led "+(approved?"allow":"block");
  document.getElementById("demoDescription").textContent=language==="ko"?(approved?"사람이 승인했습니다. 이 데모는 모의 실행만 표시합니다.":"사람이 거부했습니다. 요청은 실행되지 않습니다."):(approved?"A human approved the request. This demo shows mock execution only.":"A human denied the request. The action remains unexecuted.");
- document.getElementById("demoReview").classList.remove("show");pending=false;
+ document.getElementById("demoReview").classList.remove("show");document.getElementById("demoReview").hidden=true;pending=false;
 }
 var approve=document.querySelector("[data-demo-approve]"),deny=document.querySelector("[data-demo-deny]");
 if(approve)approve.addEventListener("click",function(){reviewDemo("approve")});
