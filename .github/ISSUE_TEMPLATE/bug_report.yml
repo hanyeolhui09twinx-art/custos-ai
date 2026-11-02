@@ -1,0 +1,68 @@
+name: Bug report
+description: Report a reproducible issue in the Custos website, Simulation Lab, or local prototype.
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Custos. Do not include access tokens, passwords, personal data, customer information, or confidential system details in a public issue.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - Corporate website
+        - Simulation Lab
+        - Local Control Room
+        - Python gateway / API
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: A concise description of the problem.
+      placeholder: Describe the observed behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: List the smallest set of steps that reproduces the issue.
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Browser, OS, Python version, and commit/version where relevant.
+      placeholder: e.g. Chrome 156 / Windows 11 / Python 3.12
+    validations:
+      required: false
+  - type: checkboxes
+    id: safe
+    attributes:
+      label: Public disclosure check
+      options:
+        - label: I have removed secrets, personal data, customer information, and confidential details.
+          required: true
