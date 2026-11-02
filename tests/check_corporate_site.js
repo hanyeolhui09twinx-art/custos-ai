@@ -25,6 +25,14 @@ for (const file of allPages) {
   if (file !== "404.html" && (!/rel="canonical"/.test(html) || !/rel="icon"/.test(html))) {
     throw new Error(file + ": missing canonical URL or branded favicon");
   }
+  if (file !== "404.html") {
+    const canonical = file === "index.html"
+      ? "https://hanyeolhui09twinx-art.github.io/custos-ai/"
+      : "https://hanyeolhui09twinx-art.github.io/custos-ai/" + file;
+    if (!html.includes('rel="canonical" href="' + canonical + '"')) {
+      throw new Error(file + ": canonical URL does not match the published route.");
+    }
+  }
 
   if (corporatePages.includes(file)) {
     if (!/href="\.\/corporate\.css"/.test(html)) throw new Error(file + ": missing shared stylesheet");
@@ -34,6 +42,9 @@ for (const file of allPages) {
     }
     if (!/class="skip-link"/.test(html) || !/id="main-content"/.test(html)) {
       throw new Error(file + ": missing keyboard skip link or main landmark");
+    }
+    if (file !== "404.html" && !html.includes('href="./terms.html"')) {
+      throw new Error(file + ": global footer is missing Terms of Use.");
     }
     if (file !== "404.html") {
       if (!/aria-controls="mobile-navigation"/.test(html) || !/id="mobile-navigation"/.test(html)) {
@@ -107,6 +118,8 @@ const terms = fs.readFileSync(path.join(site, "terms.html"), "utf8");
 for (const phrase of ["Simulation Lab", "Local Control Room", "commercial SaaS", "development"]) {
   if (!terms.toLowerCase().includes(phrase.toLowerCase())) throw new Error("Terms of Use is missing boundary disclosure: " + phrase);
 }
+const robots = fs.readFileSync(path.join(site, "robots.txt"), "utf8");
+if (!robots.includes("sitemap.xml")) throw new Error("robots.txt must reference the sitemap.");
 const sitemap = fs.readFileSync(path.join(site, "sitemap.xml"), "utf8");
 for (const page of ["platform.html", "technology.html", "security.html", "research.html", "company.html", "contact.html", "privacy.html", "terms.html"]) {
   if (!sitemap.includes("/" + page)) throw new Error("Sitemap is missing " + page);
