@@ -19,8 +19,8 @@ from custos_gateway import (
     ActionRequest, ApprovalStore, CustosGateway, DispatchAuthority, DispatchOutcomeUnknown,
 )
 from custos_provider import (
-    HttpToolProviderAdapter, RECEIPT_KEY_ID_HEADER, RECEIPT_SIGNATURE_HEADER,
-    receipt_lookup_signature,
+    HttpToolProviderAdapter, ReadOnlyResearchFixture,
+    RECEIPT_KEY_ID_HEADER, RECEIPT_SIGNATURE_HEADER, receipt_lookup_signature,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -41,6 +41,7 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         cls.port = probe.getsockname()[1]
         probe.close()
         cls.db_path = cls.root / "provider-replay.sqlite3"
+        cls.research_fixture_db_path = cls.root / "research-fixture.sqlite3"
         cls.endpoint = f"http://127.0.0.1:{cls.port}/v1/dispatch"
         cls._start_provider()
 
@@ -73,6 +74,7 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
                 sys.executable, str(ROOT / "custos_provider.py"),
                 "--host", "127.0.0.1", "--port", str(cls.port),
                 "--db", str(cls.db_path),
+                "--research-fixture-db", str(cls.research_fixture_db_path),
             ],
             cwd=ROOT,
             env=env,
@@ -170,7 +172,7 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         result = gateway.submit(request)
         self.assertEqual(result["decision"], "ALLOW")
         self.assertTrue(result["executed"])
-        self.assertEqual(result["result"]["status"], "simulated")
+        self.assertEqual(result["result"]["status"], "read_only")
 
     def test_human_approved_dispatch_uses_the_separate_provider(self) -> None:
         request = ActionRequest.from_payload(
@@ -455,6 +457,80 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         finally:
             self._stop_provider()
             self._start_provider(signing_keys=KEY_RING, active_key_id="default")
+
+    def test_provider_reads_synthetic_records_with_parameterized_read_only_queries(self) -> None:
+        request = ActionRequest.from_payload(
+            "research_agent",
+            {
+                "action": "read_database",
+                "resource": "research_db",
+                "parameters": {"query": "current market research"},
+                "request_id": "provider-fixture-read-001",
+            },
+        )
+        status, body = self._post({
+            "request": request.to_dict(),
+            "permit": self._permit(request).__dict__,
+        })
+        self.assertEqual(status, 200)
+        result = body["result"]
+        self.assertEqual(result["status"], "read_only")
+        self.assertEqual(result["storage"], "local_synthetic_sqlite_fixture")
+        self.assertEqual(result["row_count"], 1)
+        self.assertEqual(result["records"][0]["id"], "market-001")
+        self.assertEqual(result["records"][0]["source"], "synthetic-fixture")
+
+        # A SQL-shaped query remains plain bound text and cannot turn the WHERE
+        # clause into a tautology or expose the remaining fixture rows.
+        injection = ActionRequest.from_payload(
+            "research_agent",
+            {
+                "action": "read_database",
+                "resource": "research_db",
+                "parameters": {"query": "market%' OR 1=1 --"},
+                "request_id": "provider-fixture-injection-001",
+            },
+        )
+        injected_status, injected_body = self._post({
+            "request": injection.to_dict(),
+            "permit": self._permit(injection).__dict__,
+        })
+        self.assertEqual(injected_status, 200)
+        self.assertEqual(injected_body["result"]["records"], [])
+        with sqlite3.connect(self.research_fixture_db_path) as connection:
+            total = connection.execute("SELECT COUNT(*) FROM research_records").fetchone()[0]
+        self.assertEqual(total, 3)
+
+    def test_provider_fixture_runtime_connection_rejects_writes(self) -> None:
+        fixture = ReadOnlyResearchFixture(self.research_fixture_db_path)
+        connection = fixture._connect_readonly()
+        try:
+            with self.assertRaises(sqlite3.OperationalError):
+                connection.execute(
+                    "INSERT INTO research_records (id, title, content, source) VALUES (?, ?, ?, ?)",
+                    ("runtime-write", "Injected", "Must not persist", "test"),
+                )
+            self.assertTrue(connection.execute("PRAGMA query_only").fetchone()[0])
+        finally:
+            connection.close()
+
+    def test_provider_rejects_invalid_research_schema_before_claiming_execution(self) -> None:
+        request = ActionRequest.from_payload(
+            "research_agent",
+            {
+                "action": "read_database",
+                "resource": "research_db",
+                "parameters": {"query": "market", "limit": 100},
+                "request_id": "provider-fixture-extra-param-001",
+            },
+        )
+        status, body = self._post({
+            "request": request.to_dict(),
+            "permit": self._permit(request).__dict__,
+        })
+        self.assertEqual(status, 400)
+        receipt_status, _ = self._get_receipt(request.agent_id, request.request_id)
+        self.assertEqual(receipt_status, 404)
 
     def test_provider_registry_denies_unregistered_bindings_and_wrong_permit_modes(self) -> None:
         cases = [

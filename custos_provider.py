@@ -349,14 +349,142 @@ class ProviderToolRegistry:
             )
 
 
+class ReadOnlyResearchFixture:
+    """Small synthetic SQLite dataset: initialized locally, queried read-only at runtime."""
+
+    _SEED_ROWS = (
+        (
+            "market-001",
+            "Current market research: AI adoption patterns",
+            "Synthetic fixture record. Research note on enterprise AI market adoption, bounded permissions, and human decision review.",
+            "synthetic-fixture",
+        ),
+        (
+            "agency-001",
+            "Human agency and AI authorization",
+            "Synthetic fixture record. Research note on human review, delegated authority, and intervention boundaries.",
+            "synthetic-fixture",
+        ),
+        (
+            "registry-001",
+            "Provider tool registry validation",
+            "Synthetic fixture record. Research note on exact tool bindings, signed permissions, and replay protection.",
+            "synthetic-fixture",
+        ),
+    )
+
+    def __init__(self, db_path: str | Path) -> None:
+        self.db_path = Path(db_path)
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._initialize_fixture()
+
+    def _initialize_fixture(self) -> None:
+        # Creates a clearly synthetic local fixture. Runtime queries never use
+        # this writable setup connection.
+        with sqlite3.connect(self.db_path, timeout=5) as connection:
+            connection.execute(
+                """CREATE TABLE IF NOT EXISTS research_records (
+                    id TEXT PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    source TEXT NOT NULL
+                )"""
+            )
+            connection.executemany(
+                "INSERT OR IGNORE INTO research_records (id, title, content, source) VALUES (?, ?, ?, ?)",
+                self._SEED_ROWS,
+            )
+            connection.commit()
+
+    def _connect_readonly(self) -> sqlite3.Connection:
+        uri = self.db_path.resolve().as_uri() + "?mode=ro"
+        connection = sqlite3.connect(uri, uri=True, timeout=5)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA query_only=ON")
+        return connection
+
+    @staticmethod
+    def _validated_query(parameters: Any) -> tuple[str, list[str]]:
+        if not isinstance(parameters, dict) or set(parameters) != {"query"}:
+            raise ValueError("Research fixture accepts only one query parameter.")
+        query = parameters.get("query")
+        if not isinstance(query, str):
+            raise ValueError("Research query must be text.")
+        query = query.strip()
+        if not query or len(query) > 160:
+            raise ValueError("Research query must contain 1 to 160 characters.")
+        tokens = list(dict.fromkeys(re.findall(r"[a-z]{2,32}|[가-힣]{2,16}", query.casefold())))
+        if not tokens or len(tokens) > 8:
+            raise ValueError("Research query must contain 1 to 8 searchable terms.")
+        return query, tokens
+
+    def validate_parameters(self, parameters: Any) -> None:
+        self._validated_query(parameters)
+
+    def search(self, parameters: Any) -> dict[str, Any]:
+        # SQL structure is constant apart from the number of placeholders;
+        # untrusted query text is always supplied as bound values.
+        query, tokens = self._validated_query(parameters)
+        clauses = ["lower(title || ' ' || content) LIKE ?" for _ in tokens]
+        statement = (
+            "SELECT id, title, content, source FROM research_records "
+            "WHERE " + " AND ".join(clauses) + " ORDER BY id LIMIT 5"
+        )
+        connection = self._connect_readonly()
+        try:
+            rows = connection.execute(statement, [f"%{token}%" for token in tokens]).fetchall()
+        finally:
+            connection.close()
+
+        records = [dict(row) for row in rows]
+        return {
+            "status": "read_only",
+            "storage": "local_synthetic_sqlite_fixture",
+            "resource": "research_db",
+            "query": query,
+            "row_count": len(records),
+            "records": records,
+        }
+
+
+class ProviderExecutionAdapter:
+    """Exact provider-side adapter split: fixture reads and mock-only email."""
+
+    def __init__(self, research_fixture_db_path: str | Path) -> None:
+        self.research_fixture = ReadOnlyResearchFixture(research_fixture_db_path)
+        self.mock_adapter = MockExecutionAdapter()
+
+    def validate(self, request: ActionRequest) -> None:
+        binding = (request.action, request.resource)
+        if binding == ("read_database", "research_db"):
+            self.research_fixture.validate_parameters(request.parameters)
+            return
+        if binding == ("send_email", "company_email"):
+            return
+        raise DispatchAuthorizationError("No Provider execution adapter exists for this action/resource pair.")
+
+    def execute(self, request: ActionRequest) -> dict[str, Any]:
+        binding = (request.action, request.resource)
+        if binding == ("read_database", "research_db"):
+            return self.research_fixture.search(request.parameters)
+        if binding == ("send_email", "company_email"):
+            return self.mock_adapter.execute(request)
+        raise DispatchAuthorizationError("No Provider execution adapter exists for this action/resource pair.")
+
+
 class ToolProviderService:
     """The provider owns its tool registry; the calling agent receives no tool client."""
 
-    def __init__(self, verifier: DurableDispatchPermitVerifier) -> None:
+    def __init__(
+        self,
+        verifier: DurableDispatchPermitVerifier,
+        research_fixture_db_path: str | Path | None = None,
+    ) -> None:
         self.verifier = verifier
         self.receipts = ExecutionReceiptStore(verifier.db_path)
         self.registry = ProviderToolRegistry()
-        self.adapter = MockExecutionAdapter()
+        fixture_path = research_fixture_db_path or Path(verifier.db_path).with_name("research-fixture.sqlite3")
+        self.adapter = ProviderExecutionAdapter(fixture_path)
 
     def get_receipt(self, agent_id: str, request_id: str) -> dict[str, Any] | None:
         return self.receipts.get(agent_id, request_id)
@@ -376,8 +504,10 @@ class ToolProviderService:
             "action": data["action"], "resource": data["resource"],
             "parameters": data["parameters"], "request_id": data["request_id"],
         })
-        # The Provider independently checks the exact agent/action/resource
-        # binding and required permit mode before accepting a signed capability.
+        # Validate the exact tool parameter schema before consuming a permit or
+        # claiming an execution receipt. The Provider then independently checks
+        # the Agent/action/resource tuple and required signed permit mode.
+        self.adapter.validate(request)
         expected_mode = self.registry.required_mode(request)
         permit = self.verifier.consume(request, payload["permit"])
         self.registry.authorize(request, permit)
@@ -484,6 +614,7 @@ def create_provider_server(
     signing_keys: dict[str, bytes] | None = None,
     active_key_id: str = "default",
     audit_path: str | Path | None = None,
+    research_fixture_db_path: str | Path | None = None,
 ) -> ToolProviderHTTPServer:
     if host != "127.0.0.1":
         raise ValueError("The mock provider only binds to loopback.")
@@ -497,7 +628,7 @@ def create_provider_server(
     KeyRingLifecycle(db_path, AuditLog(str(resolved_audit_path)), component="provider").observe(
         verifier.key_fingerprints, active_key_id
     )
-    service = ToolProviderService(verifier)
+    service = ToolProviderService(verifier, research_fixture_db_path=research_fixture_db_path)
     return ToolProviderHTTPServer((host, port), service)
 
 
@@ -623,6 +754,7 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8766)
     parser.add_argument("--db", default=".custos-data/provider-replay.sqlite3")
     parser.add_argument("--audit", default=None, help="Provider key-lifecycle audit JSONL path")
+    parser.add_argument("--research-fixture-db", default=None, help="Local synthetic SQLite fixture path; runtime reads are read-only")
     args = parser.parse_args()
     active_key_id = os.environ.get("CUSTOS_ACTIVE_DISPATCH_KEY_ID", "default")
     raw_key_ring = os.environ.get("CUSTOS_DISPATCH_KEYS", "")
@@ -651,6 +783,7 @@ def main() -> None:
         server = create_provider_server(
             db_path=args.db, host=args.host, port=args.port,
             signing_keys=key_ring, active_key_id=active_key_id, audit_path=args.audit,
+            research_fixture_db_path=args.research_fixture_db,
         )
     else:
         try:
@@ -662,6 +795,7 @@ def main() -> None:
         server = create_provider_server(
             key, db_path=args.db, host=args.host, port=args.port,
             active_key_id=active_key_id, audit_path=args.audit,
+            research_fixture_db_path=args.research_fixture_db,
         )
     print(f"Custos mock tool provider listening on {args.host}:{args.port}", flush=True)
     try:

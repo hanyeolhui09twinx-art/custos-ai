@@ -49,6 +49,7 @@ class OpenAIAgentsSDKIntegrationTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         root = Path(self.temp.name)
         self.provider_db_path = root / "provider-replay.sqlite3"
+        self.research_fixture_db_path = root / "research-fixture.sqlite3"
         self.provider_audit_path = root / "provider-audit.jsonl"
         self.api_db_path = root / "api-approvals.sqlite3"
         self.api_audit_path = root / "api-audit.jsonl"
@@ -74,6 +75,7 @@ class OpenAIAgentsSDKIntegrationTests(unittest.TestCase):
             "--host", "127.0.0.1",
             "--port", str(self.provider_port),
             "--db", str(self.provider_db_path),
+            "--research-fixture-db", str(self.research_fixture_db_path),
             "--audit", str(self.provider_audit_path),
         ]
         self.provider_process = subprocess.Popen(
@@ -220,7 +222,9 @@ class OpenAIAgentsSDKIntegrationTests(unittest.TestCase):
 
         self.assertEqual(first["decision"], "ALLOW")
         self.assertTrue(first["executed"])
-        self.assertIn("MOCK EXECUTION ONLY", first["boundary_note"])
+        self.assertIn("READ-ONLY SYNTHETIC FIXTURE DATABASE", first["boundary_note"])
+        self.assertEqual(first["result"]["storage"], "local_synthetic_sqlite_fixture")
+        self.assertEqual(first["result"]["row_count"], 1)
         self.assertEqual(
             {key: value for key, value in first.items() if key != "replayed"},
             {key: value for key, value in second.items() if key != "replayed"},
@@ -231,7 +235,8 @@ class OpenAIAgentsSDKIntegrationTests(unittest.TestCase):
         self.assertEqual(receipt[0]["agent_id"], "research_agent")
         self.assertEqual(receipt[0]["status"], "completed")
         self.assertEqual(receipt[0]["result"]["action"], "read_database")
-        self.assertEqual(receipt[0]["result"]["status"], "simulated")
+        self.assertEqual(receipt[0]["result"]["status"], "read_only")
+        self.assertEqual(receipt[0]["result"]["row_count"], 1)
 
     def test_email_action_cannot_execute_without_separate_human_approval(self) -> None:
         pending = self.invoke(

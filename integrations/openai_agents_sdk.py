@@ -32,9 +32,13 @@ def _format_response(response: dict[str, Any]) -> str:
         )
     elif decision == "ALLOW" and safe_response.get("executed") is True:
         result = safe_response.get("result")
-        if isinstance(result, dict) and result.get("status") == "simulated":
+        if isinstance(result, dict) and result.get("status") == "read_only":
             safe_response["boundary_note"] = (
-                "MOCK EXECUTION ONLY. No real database, email system, or external tool was accessed."
+                "READ-ONLY SYNTHETIC FIXTURE DATABASE. The Provider opened a local SQLite fixture in read-only mode; no external database was accessed."
+            )
+        elif isinstance(result, dict) and result.get("status") == "simulated":
+            safe_response["boundary_note"] = (
+                "MOCK EXECUTION ONLY. No email system or external tool was accessed."
             )
     elif decision == "BLOCK":
         safe_response["boundary_note"] = "The request was denied and was not executed."
@@ -69,8 +73,9 @@ def _format_error(exc: Exception, request_id: str) -> str:
 def create_custos_tools(client: CustosClient) -> list[Any]:
     """Create the only tool surfaces exposed by the Custos-controlled Agent factory.
 
-    The current policy maps read_research_database to ALLOW (mock execution) and
-    request_company_email to HUMAN_APPROVAL (not executed until a reviewer acts).
+    The Provider maps read_research_database to a local synthetic SQLite fixture
+    opened read-only, and request_company_email to a mock-only action that remains
+    pending until a separate reviewer approves it.
     """
     if not isinstance(client, CustosClient):
         raise TypeError("client must be a CustosClient instance.")
@@ -82,7 +87,8 @@ def create_custos_tools(client: CustosClient) -> list[Any]:
     ) -> str:
         """Request a research-database read through Custos policy authorization.
 
-        This demo is wired to Custos's mock adapter. It does not query a real database.
+        Reads a local synthetic SQLite fixture through the Provider in read-only mode.
+        It does not connect to a production or external database.
         """
         request_id = _request_id(context)
         try:
@@ -155,7 +161,8 @@ def create_custos_agent(
         "was executed unless the Custos tool result explicitly confirms it. Treat "
         "HUMAN_APPROVAL as pending, not approved. Never attempt to bypass Custos "
         "through direct network calls, other tools, or code execution. The current "
-        "demo adapter is simulated and does not access real systems."
+        "research tool reads a local synthetic SQLite fixture in read-only mode; "
+        "the email tool remains mock-only and does not send messages."
     ),
     model: str | None = None,
 ) -> Agent[Any]:
