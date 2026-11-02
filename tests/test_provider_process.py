@@ -160,6 +160,46 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         self.assertTrue(result["executed"])
         self.assertEqual(result["result"]["action"], "send_email")
 
+    def test_approved_gateway_reconciles_a_lost_provider_response(self) -> None:
+        request = ActionRequest.from_payload(
+            "research_agent",
+            {
+                "action": "send_email",
+                "resource": "company_email",
+                "parameters": {"to": "reconcile@example.test"},
+                "request_id": "approved-reconcile-001",
+            },
+        )
+        delegate = HttpToolProviderAdapter(self.endpoint)
+
+        class DropApprovedResponse:
+            def execute(self, candidate):
+                return delegate.execute(candidate)
+
+            def execute_with_permit(self, candidate, permit):
+                delegate.execute_with_permit(candidate, permit)
+                raise DispatchOutcomeUnknown("Simulated lost response after provider completion.")
+
+            def get_receipt(self, agent_id, request_id):
+                return delegate.get_receipt(agent_id, request_id)
+
+        gateway = CustosGateway(
+            store=ApprovalStore(self.root / "approved-reconcile-approvals.sqlite3"),
+            audit_log=AuditLog(str(self.root / "approved-reconcile-audit.jsonl")),
+            adapter=DropApprovedResponse(),
+            dispatch_signing_key=SIGNING_KEY,
+        )
+        pending = gateway.submit(request)
+        approval_id = pending["approval_id"]
+        gateway.review_approval(approval_id, reviewer_id="reconcile-reviewer", approve=True)
+        first = gateway.execute_approved(approval_id, request.agent_id)
+        self.assertEqual(first["decision"], "EXECUTION_UNKNOWN")
+        self.assertIsNone(first["executed"])
+        second = gateway.execute_approved(approval_id, request.agent_id)
+        self.assertEqual(second["decision"], "ALLOW")
+        self.assertTrue(second["reconciled"])
+        self.assertEqual(gateway.store.get(approval_id)["status"], "executed")
+
     def test_provider_rejects_missing_forged_and_request_substituted_permits(self) -> None:
         request = self._request("provider-invalid-001")
         self.assertEqual(self._post({"request": request.to_dict()})[0], 403)
