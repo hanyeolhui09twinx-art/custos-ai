@@ -129,3 +129,9 @@
 .response-preview-head span:last-child{color:#3f7057}
 .response-preview pre{overflow-x:auto;white-space:pre;margin:13px 0 10px;padding:14px;background:#182b35;color:#d9e8df;font:10px/1.8 var(--mono)}
 .response-preview p{margin:0;color:var(--muted);font-size:10px;line-height:1.8}
+
+.copy-code{border:1px solid #526771;background:transparent;color:#c9d9d1;padding:5px 9px;font:8px var(--mono);letter-spacing:.06em;cursor:pointer}
+.copy-code:hover{background:#2a434d;border-color:#9ab3a7;color:#fff}
+.copy-code:focus-visible{outline:2px solid #d3e3da;outline-offset:3px}
+.code-head{align-items:center}
+@media(max-width:760px){.code-head{align-items:flex-start}.copy-code{align-self:flex-start}}
