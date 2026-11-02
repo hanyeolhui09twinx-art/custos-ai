@@ -16,6 +16,7 @@ It contains dedicated pages for:
 - Contact — structured bug reports and research/collaboration proposals
 - Privacy — data handling for the static site and browser tools
 - Terms of Use — usage boundaries and prototype limitations
+- Updates — engineering milestones, verification scope, and next gates
 
 The corporate site is static HTML/CSS/JavaScript. It has no hosted application backend and is not a commercial SaaS service.
 
