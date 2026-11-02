@@ -35,7 +35,7 @@ The separate Local Control Room is at:
 
 https://hanyeolhui09twinx-art.github.io/custos-ai/local-console.html
 
-It connects to a Python API that must be running on the user's own computer.
+It connects to a Python API that must be running on the user's own computer. The machine-readable API contract is published at https://hanyeolhui09twinx-art.github.io/custos-ai/openapi.json.
 
 ### Start the local API
 
