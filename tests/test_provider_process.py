@@ -125,6 +125,31 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         self.assertTrue(result["executed"])
         self.assertEqual(result["result"]["status"], "simulated")
 
+    def test_human_approved_dispatch_uses_the_separate_provider(self) -> None:
+        request = ActionRequest.from_payload(
+            "research_agent",
+            {
+                "action": "send_email",
+                "resource": "company_email",
+                "parameters": {"to": "demo@example.test"},
+                "request_id": "provider-approved-001",
+            },
+        )
+        gateway = CustosGateway(
+            store=ApprovalStore(self.root / "approved-approvals.sqlite3"),
+            audit_log=AuditLog(str(self.root / "approved-audit.jsonl")),
+            adapter=HttpToolProviderAdapter(self.endpoint),
+            dispatch_signing_key=SIGNING_KEY,
+        )
+        pending = gateway.submit(request)
+        self.assertEqual(pending["decision"], "HUMAN_APPROVAL")
+        approval_id = pending["approval_id"]
+        gateway.review_approval(approval_id, reviewer_id="integration-reviewer", approve=True)
+        result = gateway.execute_approved(approval_id, request.agent_id)
+        self.assertEqual(result["decision"], "ALLOW")
+        self.assertTrue(result["executed"])
+        self.assertEqual(result["result"]["action"], "send_email")
+
     def test_provider_rejects_missing_forged_and_request_substituted_permits(self) -> None:
         request = self._request("provider-invalid-001")
         self.assertEqual(self._post({"request": request.to_dict()})[0], 403)
