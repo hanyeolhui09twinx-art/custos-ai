@@ -5,7 +5,7 @@ const assert = require("node:assert/strict");
 
 const root = path.resolve(__dirname, "..");
 const lab = fs.readFileSync(path.join(root, "simulation-studio", "lab.html"), "utf8");
-const scriptMatches = [...lab.matchAll(/<script>([\\s\\S]*?)<\\/script>/gi)];
+const scriptMatches = [...lab.matchAll(/<script>([\s\S]*?)<\/script>/gi)];
 assert.equal(scriptMatches.length, 1, "Simulation Lab should keep one self-contained script.");
 const source = scriptMatches[0][1];
 new vm.Script(source, { filename: "simulation-lab-inline.js" });
