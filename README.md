@@ -22,7 +22,7 @@ The [bilingual Simulation Studio](https://hanyeolhui09twinx-art.github.io/custos
 
 ### 2. Python policy gateway and local API
 
-- **custos_gateway.py** — deny-by-default policy evaluation, strict request validation, SQLite-backed approval state, request idempotency, dispatch-time policy re-check, and a mock execution adapter.
+- **custos_gateway.py** — deny-by-default policy evaluation, strict request validation (including common raw credential field names), SQLite-backed approval state, request idempotency, dispatch-time policy re-check, and a mock execution adapter.
 - **custos_api.py** — authenticated local HTTP API for agent requests and human-review operations. It binds to loopback and enables CORS only for the official Custos GitHub Pages origin.
 - **audit_log.py** — local JSONL audit events linked by a SHA-256 hash chain.
 - **tests/test_custos.py** — policy, approval lifecycle, request replay, API authentication, concurrency, CORS, and audit-integrity tests.
@@ -105,6 +105,7 @@ This is **not a production security product**:
 - The API has Bearer-token authentication but no TLS, token rotation, user/role directory, rate limiting, or production deployment configuration.
 - It binds to loopback only. Do not expose it to a network or connect it to valuable tools.
 - Agent identity is mapped from a configured static token. There is no asymmetric identity, signed request envelope, delegated credential chain, or hardware-backed key protection yet.
+- Raw credential fields are rejected by common parameter-key names, but this is not general secret scanning. Never put real credentials inside free-text values. Tokens pasted into the hosted console are not persisted by the page, but the public page code itself remains part of the trust boundary; use development-only tokens.
 - Approval state is stored in local SQLite. The approval is bound to the immutable request snapshot and is single-use within this service, but there is no distributed transaction with a downstream tool.
 - The mock execution adapter does not prove that a real tool cannot be called directly. A production adapter must enforce authorization at the actual tool boundary and handle timeouts, retries, partial success, and reconciliation.
 - Request receipts are retained indefinitely. A request stuck in processing after a crash needs manual investigation.
