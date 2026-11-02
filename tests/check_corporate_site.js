@@ -6,7 +6,7 @@ const root = path.resolve(__dirname, "..");
 const site = path.join(root, "simulation-studio");
 const corporatePages = [
   "index.html", "platform.html", "technology.html", "security.html",
-  "research.html", "company.html", "contact.html", "privacy.html", "terms.html", "updates.html", "404.html"
+  "research.html", "company.html", "contact.html", "privacy.html", "terms.html", "updates.html", "developers.html", "404.html"
 ];
 const toolPages = ["lab.html", "local-console.html"];
 const allPages = [...corporatePages, ...toolPages];
@@ -131,7 +131,7 @@ const home = fs.readFileSync(path.join(site, "index.html"), "utf8");
 if (!home.includes('role="status" aria-live="polite"')) throw new Error("Policy demo decision must be announced to assistive technology.");
 if (!home.includes('data-demo-case="read" aria-pressed="true"')) throw new Error("Policy demo needs an accessible selected scenario state.");
 if (!home.includes('data-demo-approve class="run-case" data-ko="승인 · 모의 실행"')) throw new Error("Approval demo action must be bilingual.");
-for (const page of ["platform.html", "technology.html", "security.html", "research.html", "company.html", "contact.html", "privacy.html", "terms.html", "updates.html", "lab.html", "local-console.html"]) {
+for (const page of ["platform.html", "technology.html", "security.html", "research.html", "company.html", "contact.html", "privacy.html", "terms.html", "updates.html", "developers.html", "lab.html", "local-console.html"]) {
   if (!home.includes("./" + page)) throw new Error("Homepage is missing navigation to " + page);
 }
 
@@ -142,14 +142,18 @@ for (const phrase of ["DAY 001", "DAY 002", "DAY 003", "DAY 004", "NOT VERIFIED"
 for (const log of ["day-001.md", "day-002.md", "day-003.md", "day-004.md"]) {
   if (!updates.includes(log)) throw new Error("Updates page is missing the source development log: " + log);
 }
-const terms = fs.readFileSync(path.join(site, "terms.html"), "utf8");
+const developerDocs = fs.readFileSync(path.join(site, "developers.html"), "utf8");
+for (const phrase of ["/v1/requests", "/v1/approvals", "request_id", "research_db", "mock execution adapter", "Do not enter production credentials"]) {
+  if (!developerDocs.toLowerCase().includes(phrase.toLowerCase())) throw new Error("Developer Docs is missing an implementation detail: " + phrase);
+}
+\nconst terms = fs.readFileSync(path.join(site, "terms.html"), "utf8");
 for (const phrase of ["Simulation Lab", "Local Control Room", "commercial SaaS", "development"]) {
   if (!terms.toLowerCase().includes(phrase.toLowerCase())) throw new Error("Terms of Use is missing boundary disclosure: " + phrase);
 }
 const robots = fs.readFileSync(path.join(site, "robots.txt"), "utf8");
 if (!robots.includes("sitemap.xml")) throw new Error("robots.txt must reference the sitemap.");
 const sitemap = fs.readFileSync(path.join(site, "sitemap.xml"), "utf8");
-for (const page of ["platform.html", "technology.html", "security.html", "research.html", "company.html", "contact.html", "privacy.html", "terms.html", "updates.html"]) {
+for (const page of ["platform.html", "technology.html", "security.html", "research.html", "company.html", "contact.html", "privacy.html", "terms.html", "updates.html", "developers.html"]) {
   if (!sitemap.includes("/" + page)) throw new Error("Sitemap is missing " + page);
 }
 console.log("Custos website validation passed: corporate pages, standalone tools, local links, bilingual controls, threat model, sitemap, and demo behavior.");
