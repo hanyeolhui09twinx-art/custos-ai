@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 import re
 import sqlite3
 from pathlib import Path
@@ -198,7 +201,7 @@ def read_keyring_observability(
                     "SELECT key_id, is_active FROM dispatch_keyring_state WHERE component=? ORDER BY key_id",
                     (component,),
                 ).fetchall()
-            tracked = True
+            tracked = bool(rows)
             accepted_key_ids = [row[0] for row in rows]
             active = [row[0] for row in rows if row[1] == 1]
             active_key_id = active[0] if len(active) == 1 else None
