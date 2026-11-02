@@ -27,6 +27,24 @@ function applyLanguage(next){
  try{sessionStorage.setItem("custos-language",language)}catch(e){}
 }
 try{var saved=sessionStorage.getItem("custos-language");if(saved==="en")language="en"}catch(e){}
+document.querySelectorAll("[data-copy-code]").forEach(function(button){
+ button.addEventListener("click",function(){
+  var target=document.querySelector(button.getAttribute("data-copy-code"));
+  if(!target)return;
+  var content=target.innerText||target.textContent||"";
+  if(!content.trim())return;
+  function selectFallback(){
+   var range=document.createRange();range.selectNodeContents(target);
+   var selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);
+   button.textContent=language==="ko"?"선택됨 · Ctrl+C":"Selected · Ctrl+C";
+  }
+  if(window.navigator&&window.navigator.clipboard&&window.navigator.clipboard.writeText){
+   window.navigator.clipboard.writeText(content).then(function(){
+    button.textContent=language==="ko"?"복사됨":"Copied";
+   }).catch(selectFallback);
+  }else{selectFallback()}
+ });
+});
 document.querySelectorAll("[data-lang-button]").forEach(function(btn){btn.addEventListener("click",function(){applyLanguage(btn.getAttribute("data-lang-button"))})});
 applyLanguage(language);
 var toggle=document.querySelector("[data-menu-toggle]");
