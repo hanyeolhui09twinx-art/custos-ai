@@ -216,3 +216,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Custos local API runtime data (approvals DB and audit log)
+.custos-data/
+custos_audit.jsonl
