@@ -101,7 +101,7 @@ $encodedKeyRing = $keyRing | ConvertTo-Json -Compress
 $env:CUSTOS_DISPATCH_KEYS = $encodedKeyRing
 $env:CUSTOS_ACTIVE_DISPATCH_KEY_ID = "v2"
 Write-Host "Copy this key ring into Terminal B: $encodedKeyRing"
-python custos_provider.py --host 127.0.0.1 --port 8766
+python custos_provider.py --host 127.0.0.1 --port 8766 --audit .custos-data/provider-audit.jsonl
 ~~~
 
 **Terminal B — configure the gateway with the same overlap and activate `v2`:**
@@ -117,7 +117,11 @@ $env:CUSTOS_REVIEWER_TOKEN = $reviewerToken
 python custos_api.py
 ~~~
 
-**Manual rotation sequence:** First deploy the provider with both old and new keys. Then switch every gateway signer to the new `CUSTOS_ACTIVE_DISPATCH_KEY_ID`. Keep the old key in both rings while old gateway instances may still issue permits. After all old signers are stopped and the 15-second permit lifetime plus deployment drain has elapsed, remove the old key from both rings and restart both processes. Removal is the revocation action; there is no built-in scheduled expiry for a retired key.
+**Routine rotation sequence:** First deploy the provider with both old and new keys. Then switch every gateway signer to the new `CUSTOS_ACTIVE_DISPATCH_KEY_ID`. Keep the old key in both rings while old gateway instances may still issue permits. After all old signers are stopped and the 15-second permit lifetime plus deployment drain has elapsed, remove the old key from both rings and restart both processes. Removal is the revocation action; there is no built-in scheduled expiry for a retired key.
+
+**Emergency compromise response:** Do not preserve an overlap window for a compromised key. Remove its key ID from the provider's `CUSTOS_DISPATCH_KEYS` and restart the provider first; the provider is the acceptance boundary and will reject permits and receipt-lookup signatures using that ID. Then remove the key from every gateway ring, generate a fresh key under a new ID, update both processes, and restart all gateways. A gateway still holding the old key will fail closed against the provider. Check both components' audit files for `DISPATCH_KEY_REVOKED`, `DISPATCH_KEY_REGISTERED`, and `DISPATCH_KEY_ACTIVATED`. Gateway audit defaults to `.custos-data/audit.jsonl`; the provider defaults to a sibling `.audit.jsonl` based on its database path (or use `--audit`). Audit records contain key IDs and change types, never raw keys or fingerprints. The SQLite lifecycle snapshot stores SHA-256 fingerprints only to detect replacement under an unchanged ID. These local logs are hash-chained, not immutable or remotely anchored.
+
+Revocation only blocks future requests that still need provider verification; it cannot undo an action the provider already accepted. Reconcile uncertain outcomes using the same request ID and the provider receipt. Do not generate a new ID or replay a possibly completed side effect.
 
 The provider validates dispatch `key_id` values against its configured key ring. Receipt reads use a purpose-derived HMAC key selected by `X-Custos-Receipt-Key-Id` and a signature bound to the exact GET path in `X-Custos-Receipt-Signature`. The legacy single-key variable `CUSTOS_DISPATCH_SIGNING_KEY` remains supported as the `default` key for compatibility. Key rotation is manual environment configuration, not KMS/HSM-backed management. Both processes still run on one trusted machine over loopback HTTP, and no external tools or credentials are connected.
 
@@ -158,9 +162,9 @@ This is **not a production security product**:
 - It binds to loopback only. Do not expose it to a network or connect it to valuable tools.
 - Agent identity is mapped from a configured static token. There is no asymmetric identity, signed request envelope, delegated credential chain, or hardware-backed key protection.
 - Approval state is stored in local SQLite. There is no distributed transaction with a downstream tool.
-- The separate mock provider verifies key-ID-bound dispatch permits, HMAC-authenticates receipt reads, and stores execution receipts in another local process. A manually configured key ring supports overlapping old/new keys and retirement by removing a key. It is not an automated KMS/HSM system. Gateway startup also recovers local request receipts left processing, but recovery assumes a single gateway instance. The provider is not an OS sandbox and has no real tool credentials. The ledger provides provider-local at-most-once invocation behavior; a crash after a real downstream side effect but before receipt completion still requires that downstream tool's own idempotency key or status-query reconciliation.
+- The separate mock provider verifies key-ID-bound dispatch permits, HMAC-authenticates receipt reads, and stores execution receipts in another local process. A manually configured key ring supports overlapping old/new keys and retirement by removing a key. Gateway and provider startup compare configured key IDs, active IDs, and non-secret SHA-256 fingerprints against local SQLite state, then write register/activate/revoke/replace events to separate hash-chained audit files. This records observed startup configuration changes; it is not a remote revocation service or real-time configuration watcher. It is not an automated KMS/HSM system. Gateway startup also recovers local request receipts left processing, but recovery assumes a single gateway instance. The provider is not an OS sandbox and has no real tool credentials. The ledger provides provider-local at-most-once invocation behavior; a crash after a real downstream side effect but before receipt completion still requires that downstream tool's own idempotency key or status-query reconciliation.
 - Raw credential field names are rejected, but this is not general-purpose secret detection. Never place secrets in free-text values.
-- The audit log is hash-chained but not immutable against a privileged actor who can rewrite the entire file.
+- The audit log is hash-chained but not immutable against a privileged actor who can rewrite the entire file. Key lifecycle history is local to each component and is not remotely anchored; a privileged host attacker can alter both the SQLite snapshot and its log.
 - The Local Control Room uses development tokens. The public page code is part of the credential trust boundary; do not enter production secrets.
 - Browser-to-loopback access depends on browser permissions and has not been independently verified across every browser/platform.
 
@@ -186,4 +190,4 @@ Custos should currently be described as a local research prototype with a mock e
 - [Day 011 — Gateway restart recovery](devlog/day-011.md)
 - [Day 012 — Authenticated provider receipt lookups](devlog/day-012.md)
 - [Day 013 — Dispatch key-ring rotation](devlog/day-013.md)
-- [Day 011 — Gateway restart recovery](devlog/day-011.md)
+- [Day 014 — Key compromise response and lifecycle audit](devlog/day-014.md)
