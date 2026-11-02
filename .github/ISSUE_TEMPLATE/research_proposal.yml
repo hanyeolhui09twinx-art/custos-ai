@@ -1,7 +1,6 @@
 name: Research or collaboration proposal
 description: Suggest a technical research direction, adversarial test, or collaboration idea.
 title: "[Research]: "
-labels: ["research", "triage"]
 body:
   - type: markdown
     attributes:
