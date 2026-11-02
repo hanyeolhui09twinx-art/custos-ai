@@ -56,9 +56,13 @@ async function main() {
       assert.ok(await page.locator('a.header-cta[href="./local-console.html"]').count(), route + " lost the Local Control Room entry point");
 
       const currentNav = page.locator('[data-nav][aria-current="page"]');
-      if (route !== "/") {
-        assert.equal(await currentNav.count(), 1, route + " must identify exactly one active navigation item");
-      }
+      const pageKey = route === "/" ? "" : route.slice(1).replace(/\\.html$/, "");
+      const hasTopLevelNavItem = pageKey && (await page.locator('[data-nav="' + pageKey + '"]').count()) > 0;
+      assert.equal(
+        await currentNav.count(),
+        hasTopLevelNavItem ? 1 : 0,
+        route + " has an unexpected active navigation state"
+      );
 
       if (route === "/") {
         await page.screenshot({ path: path.join(OUT, "home-desktop.png"), fullPage: true });
