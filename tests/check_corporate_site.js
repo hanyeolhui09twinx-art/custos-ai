@@ -146,6 +146,7 @@ const developerDocs = fs.readFileSync(path.join(site, "developers.html"), "utf8"
 if (!developerDocs.includes('Invoke-RestMethod -Method Post') || !developerDocs.includes('Bearer $reviewerToken') || !developerDocs.includes('PASTE_APPROVAL_ID_HERE')) {
   throw new Error("Developer Docs must contain a working-style local request and approval walkthrough.");
 }
+if (!developerDocs.includes('-Body "{}"')) throw new Error("Execute example must send the required JSON request body.");
 for (const phrase of ["/v1/requests", "/v1/approvals", "request_id", "research_db", "mock execution adapter", "Do not enter production credentials"]) {
   if (!developerDocs.toLowerCase().includes(phrase.toLowerCase())) throw new Error("Developer Docs is missing an implementation detail: " + phrase);
 }
