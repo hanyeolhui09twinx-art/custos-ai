@@ -162,3 +162,131 @@ if (!localConsole.includes('href="./index.html"')) throw new Error("Local Contro
 if (!localConsole.includes('href="./lab.html"') || !localConsole.includes('href="./index.html"')) {
   throw new Error("Local Control Room must link back to both the Lab and corporate website.");
 }
+
+
+// Exercise the actual corporate UI handlers with a tiny deterministic DOM harness.
+class FakeElement {
+  constructor(attributes = {}) {
+    this.attributes = {...attributes};
+    this.listeners = {};
+    this.classNames = new Set();
+    this.classList = {
+      add: name => this.classNames.add(name),
+      remove: name => this.classNames.delete(name),
+      contains: name => this.classNames.has(name),
+      toggle: (name, force) => {
+        const enabled = force === undefined ? !this.classNames.has(name) : Boolean(force);
+        if (enabled) this.classNames.add(name);
+        else this.classNames.delete(name);
+        return enabled;
+      }
+    };
+    this.textContent = "";
+    this.placeholder = "";
+    this.hidden = false;
+    this.className = "";
+    this.focused = false;
+  }
+  getAttribute(name) { return this.attributes[name] ?? null; }
+  setAttribute(name, value) { this.attributes[name] = String(value); }
+  addEventListener(name, callback) { this.listeners[name] = callback; }
+  click() { if (this.listeners.click) this.listeners.click({type: "click"}); }
+  focus() { this.focused = true; }
+  querySelectorAll() { return []; }
+}
+const demoElements = {
+  demoAction: new FakeElement(),
+  demoResource: new FakeElement(),
+  demoScope: new FakeElement(),
+  demoEffect: new FakeElement(),
+  demoDecision: new FakeElement(),
+  demoLed: new FakeElement(),
+  demoDescription: new FakeElement(),
+  demoReview: new FakeElement()
+};
+demoElements.demoReview.hidden = true;
+const langKo = new FakeElement({"data-lang-button": "ko"});
+const langEn = new FakeElement({"data-lang-button": "en"});
+const menuToggle = new FakeElement({"aria-expanded": "false"});
+const mobileNav = new FakeElement();
+const demoRead = new FakeElement({"data-demo-case": "read"});
+const demoEmail = new FakeElement({"data-demo-case": "email"});
+const demoDisable = new FakeElement({"data-demo-case": "disable"});
+const demoRun = new FakeElement();
+const demoApprove = new FakeElement();
+const demoDeny = new FakeElement();
+const selectorResults = {
+  "[data-lang-button]": [langKo, langEn],
+  "[data-ko][data-en]": [],
+  "[data-placeholder-ko][data-placeholder-en]": [],
+  "[data-menu-toggle]": [menuToggle],
+  "[data-mobile-nav]": [mobileNav],
+  "[data-nav]": [],
+  ".reveal": [],
+  "[data-demo-case]": [demoRead, demoEmail, demoDisable]
+};
+const singleResults = {
+  "[data-menu-toggle]": menuToggle,
+  "[data-mobile-nav]": mobileNav,
+  "[data-demo-run]": demoRun,
+  "[data-demo-approve]": demoApprove,
+  "[data-demo-deny]": demoDeny
+};
+const keyListeners = {};
+const fakeDocument = {
+  documentElement: {lang: "ko"},
+  body: {getAttribute: name => name === "data-page" ? "home" : null},
+  querySelectorAll: selector => selectorResults[selector] || [],
+  querySelector: selector => singleResults[selector] || null,
+  getElementById: id => demoElements[id] || null,
+  addEventListener: (name, callback) => { keyListeners[name] = callback; }
+};
+const fakeSession = {getItem: () => null, setItem: () => {}};
+vm.runInNewContext(js, {document: fakeDocument, window: {}, sessionStorage: fakeSession});
+
+demoEmail.click();
+demoRun.click();
+if (demoElements.demoDecision.textContent !== "HUMAN_APPROVAL" || demoElements.demoReview.hidden) {
+  throw new Error("Email scenario must require a visible human approval step.");
+}
+demoApprove.click();
+if (demoElements.demoDecision.textContent !== "승인됨 · 모의 실행" || !demoElements.demoReview.hidden) {
+  throw new Error("Approval action must transition to approved mock state and hide review controls.");
+}
+langEn.click();
+if (demoElements.demoDecision.textContent !== "APPROVED · MOCK" ||
+    !demoElements.demoDescription.textContent.includes("mock execution")) {
+  throw new Error("Switching to English must re-render the already approved demo state.");
+}
+langKo.click();
+if (demoElements.demoDecision.textContent !== "승인됨 · 모의 실행") {
+  throw new Error("Switching back to Korean must retain the current demo state.");
+}
+
+demoEmail.click();
+demoRun.click();
+demoDeny.click();
+if (demoElements.demoDecision.textContent !== "거부됨 · 실행 차단") {
+  throw new Error("Denial action must transition to the denied state.");
+}
+demoDisable.click();
+demoRun.click();
+if (demoElements.demoDecision.textContent !== "차단") {
+  throw new Error("Protected system action must produce a block decision.");
+}
+demoRead.click();
+demoRun.click();
+if (demoElements.demoDecision.textContent !== "허용") {
+  throw new Error("Permitted research read scenario must produce an allow decision.");
+}
+
+menuToggle.click();
+if (menuToggle.getAttribute("aria-expanded") !== "true" || !mobileNav.classList.contains("open")) {
+  throw new Error("Mobile menu toggle must expose the open state.");
+}
+if (!keyListeners.keydown) throw new Error("Escape key handler was not installed.");
+keyListeners.keydown({key: "Escape"});
+if (menuToggle.getAttribute("aria-expanded") !== "false" || mobileNav.classList.contains("open") || !menuToggle.focused) {
+  throw new Error("Escape must close the mobile menu and restore focus to the toggle.");
+}
+console.log("Corporate UI behavior checks passed: policy states, approval flow, bilingual state retention, and keyboard menu control.");
