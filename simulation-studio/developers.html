@@ -79,28 +79,58 @@ Invoke-RestMethod -Method Post `
 </div></section>
 <section class="section" style="background:#e8ede8"><div class="container">
 <div class="section-head"><div class="eyebrow">04 / API ROUTES</div><div><h2 data-ko="API 엔드포인트" data-en="API endpoints">API 엔드포인트</h2><p data-ko="GET /health를 제외한 엔드포인트는 Bearer 인증이 필요합니다. Agent 토큰은 요청 제출 및 본인 승인 요청 실행에 사용하고, Reviewer 토큰은 승인 목록 조회와 검토에 사용합니다." data-en="All endpoints except GET /health require Bearer authentication. Agent tokens submit requests and execute the originating agent's approved request; Reviewer tokens list and review pending approvals.">GET /health를 제외한 엔드포인트는 Bearer 인증이 필요합니다. Agent 토큰은 요청 제출 및 본인 승인 요청 실행에 사용하고, Reviewer 토큰은 승인 목록 조회와 검토에 사용합니다.</p></div></div>
-<div class="code-panel"><div class="code-head"><span>POWERSHELL / HUMAN APPROVAL</span><span>04 — REVIEW AND EXECUTE</span></div><pre><code># List pending approvals (Reviewer token)
+<p class="doc-intro" data-ko="이 예제는 현재 정책의 HUMAN_APPROVAL 경로를 처음부터 끝까지 따라갑니다. send_email 요청은 실제 이메일을 보내지 않고 승인 레코드만 생성합니다." data-en="This walkthrough follows the current HUMAN_APPROVAL path end to end. The send_email request creates an approval record; it does not send a real email.">이 예제는 현재 정책의 HUMAN_APPROVAL 경로를 처음부터 끝까지 따라갑니다. send_email 요청은 실제 이메일을 보내지 않고 승인 레코드만 생성합니다.</p>
+<div class="walkthrough-steps">
+ <div><span>01</span><b data-ko="Agent가 요청 제출" data-en="Agent submits request">Agent가 요청 제출</b><small data-ko="send_email → HUMAN_APPROVAL" data-en="send_email → HUMAN_APPROVAL">send_email → HUMAN_APPROVAL</small></div>
+ <div><span>02</span><b data-ko="승인 ID 확인" data-en="Capture approval ID">승인 ID 확인</b><small data-ko="요청 응답의 approval_id" data-en="approval_id from the response">요청 응답의 approval_id</small></div>
+ <div><span>03</span><b data-ko="Reviewer 검토" data-en="Reviewer review">Reviewer 검토</b><small data-ko="approve 또는 deny" data-en="approve or deny">approve 또는 deny</small></div>
+ <div><span>04</span><b data-ko="원래 Agent 실행" data-en="Original Agent executes">원래 Agent 실행</b><small data-ko="승인된 요청 1회 실행 시도" data-en="One execution attempt for approved request">승인된 요청 1회 실행 시도</small></div>
+</div>
+<div class="code-panel"><div class="code-head"><span>POWERSHELL / HUMAN APPROVAL ROUNDTRIP</span><span>04 — REQUEST → REVIEW → EXECUTE</span></div><pre><code># 1) Agent submits a request that requires human approval
+$emailPayload = @{
+  action = "send_email"
+  resource = "company_email"
+  parameters = @{}
+  request_id = "docs-email-001"
+} | ConvertTo-Json -Depth 10
+
+$emailResponse = Invoke-RestMethod -Method Post `
+  -Uri "http://127.0.0.1:8765/v1/requests" `
+  -Headers @{ Authorization = "Bearer $agentToken" } `
+  -ContentType "application/json" `
+  -Body $emailPayload
+
+# Confirm the policy outcome and capture the approval ID
+$emailResponse
+if ($emailResponse.decision -ne "HUMAN_APPROVAL" -or -not $emailResponse.approval_id) {
+  throw "Expected HUMAN_APPROVAL with an approval_id."
+}
+$approvalId = $emailResponse.approval_id
+
+# 2) Reviewer checks the pending queue
 $pending = Invoke-RestMethod -Method Get `
   -Uri "http://127.0.0.1:8765/v1/approvals" `
   -Headers @{ Authorization = "Bearer $reviewerToken" }
+$pending.approvals | Format-Table approval_id, status, expires_at
 
-# Set this to an approval_id from the pending response
-$approvalId = "PASTE_APPROVAL_ID_HERE"
-
-# Approve the exact request (Reviewer token)
+# 3) Reviewer approves the exact request
 $reviewBody = @{ decision = "approve" } | ConvertTo-Json
-Invoke-RestMethod -Method Post `
+$reviewResult = Invoke-RestMethod -Method Post `
   -Uri "http://127.0.0.1:8765/v1/approvals/$approvalId/review" `
   -Headers @{ Authorization = "Bearer $reviewerToken" } `
   -ContentType "application/json" `
   -Body $reviewBody
+$reviewResult
 
-# Execute once as the original requesting Agent
-Invoke-RestMethod -Method Post `
+# 4) The original Agent attempts execution once
+# The API currently requires a JSON object body, even though it is empty.
+$execution = Invoke-RestMethod -Method Post `
   -Uri "http://127.0.0.1:8765/v1/approvals/$approvalId/execute" `
   -Headers @{ Authorization = "Bearer $agentToken" } `
   -ContentType "application/json" `
-  -Body "{}"</code></pre></div>
+  -Body "{}"
+$execution</code></pre></div>
+<p class="form-note" data-ko="이 흐름의 실행 어댑터는 MockExecutionAdapter입니다. 응답은 simulated 결과이며 이메일이 발송되지 않습니다. 실행 중 프로세스 충돌 시 자동 복구도 구현되어 있지 않습니다." data-en="This flow uses MockExecutionAdapter. The response is simulated; no email is sent. Automatic recovery after a process crash during execution is not implemented.">이 흐름의 실행 어댑터는 MockExecutionAdapter입니다. 응답은 simulated 결과이며 이메일이 발송되지 않습니다. 실행 중 프로세스 충돌 시 자동 복구도 구현되어 있지 않습니다.</p>
 <p class="form-note" data-ko="승인 단계는 요청 스냅샷과 연결됩니다. Reviewer는 승인 또는 거부할 수 있으며, 실행은 원래 요청한 Agent 토큰으로 한 번만 시도할 수 있습니다. 실제 실행 결과는 mock adapter의 시뮬레이션 응답입니다." data-en="The approval is bound to the request snapshot. A reviewer can approve or deny it, and execution can be attempted once using the original requesting Agent token. The execution result is a simulation response from the mock adapter.">승인 단계는 요청 스냅샷과 연결됩니다. Reviewer는 승인 또는 거부할 수 있으며, 실행은 원래 요청한 Agent 토큰으로 한 번만 시도할 수 있습니다. 실제 실행 결과는 mock adapter의 시뮬레이션 응답입니다.</p>
 <div class="table-wrap"><table><thead><tr><th>METHOD</th><th>PATH</th><th>AUTH</th><th>DESCRIPTION</th></tr></thead><tbody>
 <tr><td>GET</td><td><code>/health</code></td><td>None</td><td data-ko="로컬 서버 상태" data-en="Local service health">로컬 서버 상태</td></tr>
