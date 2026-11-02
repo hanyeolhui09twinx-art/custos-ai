@@ -264,7 +264,7 @@ for (const code of ["200", "400", "401", "403", "404", "409", "410", "413", "500
   if (!developerDocs.includes(">" + code + "<")) throw new Error("Developer Docs is missing HTTP status code " + code);
 }
 if (!developerDocs.includes("BLOCK") || !developerDocs.includes("HTTP 200")) throw new Error("Developer Docs must distinguish policy decisions from HTTP response status.");
-for (const phrase of ["custos_provider.py", "CUSTOS_TOOL_PROVIDER_URL", "CUSTOS_DISPATCH_SIGNING_KEY", "same trusted machine", "not an OS sandbox"]) {
+for (const phrase of ["custos_provider.py", "CUSTOS_TOOL_PROVIDER_URL", "CUSTOS_DISPATCH_SIGNING_KEY", "same trusted machine", "OS sandboxing"]) {
   if (!developerDocs.includes(phrase)) throw new Error("Developer Docs must disclose provider-process setup: " + phrase);
 }
 for (const phrase of ["custos_provider.py", "CUSTOS_TOOL_PROVIDER_URL", "CUSTOS_DISPATCH_SIGNING_KEY", "same trusted machine", "not an OS sandbox"]) {
