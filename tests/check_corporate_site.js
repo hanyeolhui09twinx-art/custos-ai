@@ -8,7 +8,7 @@ const corporatePages = [
   "index.html", "platform.html", "technology.html", "security.html",
   "research.html", "company.html", "contact.html", "privacy.html", "terms.html", "updates.html", "developers.html", "404.html"
 ];
-const toolPages = ["lab.html", "local-console.html"];
+const toolPages = ["lab.html", "local-console.html", "security-ops.html"];
 const allPages = [...corporatePages, ...toolPages];
 const available = new Set(fs.readdirSync(site));
 const missing = allPages.filter(file => !available.has(file));
@@ -164,7 +164,7 @@ if (!platform.includes('class="decision-cards"') || !platform.includes("CONTROL 
 if (!platform.includes('class="journey-grid"') || !platform.includes("01 / EXPLORE") || !platform.includes("02 / PREPARE") || !platform.includes("03 / CONNECT")) {
   throw new Error("Platform page is missing the guided Lab → Docs → Local Control Room journey.");
 }
-for (const page of ['./lab.html', './developers.html', './local-console.html']) {
+for (const page of ['./lab.html', './developers.html', './local-console.html', './security-ops.html']) {
   if (!platform.includes('href="' + page + '"')) throw new Error("Guided product journey is missing " + page);
 }
 if (!home.includes('href="./developers.html"') || !home.includes("Developer quick start")) {
@@ -199,7 +199,7 @@ if (!developerDocs.includes('class="walkthrough-steps"') || !css.includes(".prot
   throw new Error("The product explanation UI styles are missing.");
 }
 
-for (const page of ["platform.html", "technology.html", "security.html", "research.html", "company.html", "contact.html", "privacy.html", "terms.html", "updates.html", "developers.html", "lab.html", "local-console.html"]) {
+for (const page of ["platform.html", "technology.html", "security.html", "research.html", "company.html", "contact.html", "privacy.html", "terms.html", "updates.html", "developers.html", "lab.html", "local-console.html", "security-ops.html"]) {
   if (!home.includes("./" + page)) throw new Error("Homepage is missing navigation to " + page);
 }
 
@@ -218,7 +218,7 @@ if (!apiSource.includes("dispatch_signing_keys=dispatch_signing_keys") || !apiSo
 if (!apiSource.includes("receipt_signing_key=dispatch_signing_key")) {
   throw new Error("Gateway API must pass the dispatch key to authenticated provider receipt lookups.");
 }
-for (const fragment of ['path == "/health"', 'path == "/v1/requests"', 'path == "/v1/approvals"', 'operation == "review"', 'operation == "execute"']) {
+for (const fragment of ['path == "/health"', 'path == "/v1/requests"', 'path == "/v1/approvals"', 'path == "/v1/security/overview"', 'self._require_reviewer()', 'operation == "review"', 'operation == "execute"']) {
   if (!apiSource.includes(fragment)) throw new Error("API implementation route is missing: " + fragment);
 }
 if (!apiSource.includes('origin != "https://hanyeolhui09twinx-art.github.io"')) {
@@ -259,7 +259,7 @@ for (const status of ["pending", "approved", "denied", "expired", "executing", "
 const openApiPath = path.join(site, "openapi.json");
 const openApi = JSON.parse(fs.readFileSync(openApiPath, "utf8"));
 if (openApi.openapi !== "3.1.0") throw new Error("OpenAPI contract must use version 3.1.0.");
-for (const route of ["/health", "/v1/requests", "/v1/approvals", "/v1/approvals/{approval_id}/review", "/v1/approvals/{approval_id}/execute"]) {
+for (const route of ["/health", "/v1/requests", "/v1/approvals", "/v1/security/overview", "/v1/approvals/{approval_id}/review", "/v1/approvals/{approval_id}/execute"]) {
   if (!openApi.paths[route]) throw new Error("OpenAPI contract is missing route " + route);
 }
 if (!openApi.servers.some(server => server.url === "http://127.0.0.1:8765")) {
@@ -270,6 +270,28 @@ if (!openApi.info.description.includes("https://hanyeolhui09twinx-art.github.io"
 }
 if (!developerDocs.includes("other browser origins") && !developerDocs.includes("다른 도메인")) {
   throw new Error("Developer Docs must disclose the browser CORS origin limitation.");
+}
+
+const securityOps = fs.readFileSync(path.join(site, "security-ops.html"), "utf8");
+for (const phrase of ["/v1/security/overview", "reviewerToken", "componentFilter", "eventFilter", "DISPATCH_KEY_REVOKED", "audit_integrity", "accepted_key_ids", "revoked_key_ids", "READ ONLY", "targetAddressSpace", "textContent"]) {
+  if (!securityOps.includes(phrase)) throw new Error("Security Operations page is missing a read-only observability control: " + phrase);
+}
+if (/localStorage|innerHTML/.test(securityOps)) {
+  throw new Error("Security Operations must not persist credentials or inject audit data as HTML.");
+}
+const inlineScripts = [...securityOps.matchAll(/<script>([\\s\\S]*?)<\\/script>/g)];
+if (!inlineScripts.length) throw new Error("Security Operations must provide its local API client.");
+for (const script of inlineScripts) new vm.Script(script[1], {filename: "security-ops.inline.js"});
+const securityPath = openApi.paths["/v1/security/overview"].get;
+if (!securityPath.security || !securityPath.security.some(item => item.ReviewerBearer)) {
+  throw new Error("Security observability route must require reviewer authentication.");
+}
+if (!securityPath.description.includes("never returns key bytes") || !securityPath.description.includes("read-only")) {
+  throw new Error("Security observability contract must disclose its sanitized read-only boundary.");
+}
+const sitemap = fs.readFileSync(path.join(site, "sitemap.xml"), "utf8");
+if (!sitemap.includes("https://hanyeolhui09twinx-art.github.io/custos-ai/security-ops.html")) {
+  throw new Error("Sitemap is missing Security Operations.");
 }
 if (!openApi.components.securitySchemes.AgentBearer || !openApi.components.securitySchemes.ReviewerBearer) {
   throw new Error("OpenAPI contract must distinguish Agent and Reviewer credentials.");
@@ -288,7 +310,7 @@ for (const code of ["200", "400", "401", "403", "404", "409", "410", "413", "500
   if (!developerDocs.includes(">" + code + "<")) throw new Error("Developer Docs is missing HTTP status code " + code);
 }
 if (!developerDocs.includes("BLOCK") || !developerDocs.includes("HTTP 200")) throw new Error("Developer Docs must distinguish policy decisions from HTTP response status.");
-for (const phrase of ["custos_provider.py", "CUSTOS_TOOL_PROVIDER_URL", "CUSTOS_DISPATCH_KEYS", "CUSTOS_ACTIVE_DISPATCH_KEY_ID", "CUSTOS_DISPATCH_SIGNING_KEY", "Manual key rotation sequence", "same trusted machine", "OS sandboxing"]) {
+for (const phrase of ["custos_provider.py", "CUSTOS_TOOL_PROVIDER_URL", "CUSTOS_PROVIDER_DB", "CUSTOS_PROVIDER_AUDIT_LOG", "CUSTOS_DISPATCH_KEYS", "CUSTOS_ACTIVE_DISPATCH_KEY_ID", "CUSTOS_DISPATCH_SIGNING_KEY", "Manual key rotation sequence", "Security Operations", "same trusted machine", "OS sandboxing"]) {
   if (!developerDocs.includes(phrase)) throw new Error("Developer Docs must disclose provider-process setup: " + phrase);
 }
 for (const phrase of ["/v1/requests", "/v1/approvals", "request_id", "research_db", "mock execution adapter", "Do not enter production credentials"]) {
