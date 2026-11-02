@@ -112,3 +112,14 @@
  .decision-card{min-height:0}
  .walkthrough-steps{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+
+/* Guided product journey */
+.journey-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:26px}
+.journey-card{display:flex;flex-direction:column;min-height:220px;padding:20px;background:rgba(255,255,255,.045);border:1px solid #3b5159;color:#f3f5f2;text-decoration:none;transition:background .2s,border-color .2s,transform .2s}
+.journey-card:hover{background:rgba(255,255,255,.09);border-color:#8da99d;transform:translateY(-3px)}
+.journey-step{font:9px var(--mono);letter-spacing:.13em;color:#a4b8b2;margin-bottom:27px}
+.journey-card strong{font:500 19px var(--serif);color:#f4f6f3}
+.journey-card p{font-size:10px;line-height:1.8;color:#bbc7c2;margin:9px 0 20px}
+.journey-card b{font-size:10px;color:#c9d9d1;margin-top:auto}
+.journey-footnote{font-size:10px;line-height:1.8;color:#b6c3bf;margin:16px 0 0}
+@media(max-width:760px){.journey-grid{grid-template-columns:1fr}.journey-card{min-height:0}.journey-step{margin-bottom:14px}}
