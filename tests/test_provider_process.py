@@ -18,10 +18,16 @@ from audit_log import AuditLog
 from custos_gateway import (
     ActionRequest, ApprovalStore, CustosGateway, DispatchAuthority, DispatchOutcomeUnknown,
 )
-from custos_provider import HttpToolProviderAdapter, RECEIPT_SIGNATURE_HEADER, receipt_lookup_signature
+from custos_provider import (
+    HttpToolProviderAdapter, RECEIPT_KEY_ID_HEADER, RECEIPT_SIGNATURE_HEADER,
+    receipt_lookup_signature,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 SIGNING_KEY = bytes.fromhex("ab" * 32)
+LEGACY_KEY = bytes.fromhex("cd" * 32)
+KEY_RING = {"default": SIGNING_KEY, "legacy": LEGACY_KEY}
+ACTIVE_KEY_ID = "default"
 
 
 class IsolatedToolProviderProcessTests(unittest.TestCase):
@@ -43,9 +49,13 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         cls.temp.cleanup()
 
     @classmethod
-    def _start_provider(cls) -> None:
+    def _start_provider(cls, signing_keys: dict[str, bytes] | None = None) -> None:
         env = os.environ.copy()
-        env["CUSTOS_DISPATCH_SIGNING_KEY"] = SIGNING_KEY.hex()
+        configured_keys = signing_keys or KEY_RING
+        env["CUSTOS_DISPATCH_KEYS"] = json.dumps({
+            key_id: key_value.hex() for key_id, key_value in configured_keys.items()
+        })
+        env["CUSTOS_ACTIVE_DISPATCH_KEY_ID"] = ACTIVE_KEY_ID
         cls.process = subprocess.Popen(
             [
                 sys.executable, str(ROOT / "custos_provider.py"),
@@ -98,6 +108,14 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         authority = DispatchAuthority(signing_key=SIGNING_KEY)
         return authority.issue(request, mode="ALLOW")
 
+    @staticmethod
+    def _permit_with_key(request: ActionRequest, key_id: str, key: bytes):
+        authority = DispatchAuthority(
+            signing_keys={key_id: key},
+            active_key_id=key_id,
+        )
+        return authority.issue(request, mode="ALLOW")
+
     @classmethod
     def _post(cls, payload: dict) -> tuple[int, dict]:
         body = json.dumps(payload, separators=(",", ":"), allow_nan=False).encode("utf-8")
@@ -118,7 +136,8 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         path = f"/v1/receipts/{agent_id}/{request_id}"
         url = f"http://127.0.0.1:{cls.port}{path}"
         headers = {
-            RECEIPT_SIGNATURE_HEADER: receipt_lookup_signature(SIGNING_KEY, path),
+            RECEIPT_KEY_ID_HEADER: ACTIVE_KEY_ID,
+            RECEIPT_SIGNATURE_HEADER: receipt_lookup_signature(SIGNING_KEY, path, ACTIVE_KEY_ID),
         }
         req = Request(url, headers=headers, method="GET")
         try:
@@ -204,6 +223,53 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         self.assertEqual(second["decision"], "ALLOW")
         self.assertTrue(second["reconciled"])
         self.assertEqual(gateway.store.get(approval_id)["status"], "executed")
+
+    def test_provider_accepts_previous_and_active_keys_during_rotation(self) -> None:
+        previous_request = self._request("provider-key-rotation-previous-001")
+        active_request = self._request("provider-key-rotation-active-001")
+        previous_permit = self._permit_with_key(previous_request, "legacy", LEGACY_KEY)
+        active_permit = self._permit_with_key(active_request, "default", SIGNING_KEY)
+
+        previous_status, previous = self._post({
+            "request": previous_request.to_dict(),
+            "permit": previous_permit.__dict__,
+        })
+        active_status, active = self._post({
+            "request": active_request.to_dict(),
+            "permit": active_permit.__dict__,
+        })
+
+        self.assertEqual(previous_status, 200)
+        self.assertEqual(active_status, 200)
+        self.assertEqual(previous["result"]["request_id"], previous_request.request_id)
+        self.assertEqual(active["result"]["request_id"], active_request.request_id)
+
+    def test_provider_rejects_retired_key_after_rotation_window(self) -> None:
+        request = self._request("provider-key-retired-001")
+        old_permit = self._permit_with_key(request, "legacy", LEGACY_KEY)
+        payload = {"request": request.to_dict(), "permit": old_permit.__dict__}
+
+        self._stop_provider()
+        try:
+            self._start_provider(signing_keys={"default": SIGNING_KEY})
+            status, body = self._post(payload)
+            self.assertEqual(status, 403)
+            self.assertEqual(body.get("code"), "dispatch_denied")
+        finally:
+            self._stop_provider()
+            self._start_provider(signing_keys=KEY_RING)
+
+    def test_provider_rejects_permit_key_id_substitution(self) -> None:
+        request = self._request("provider-key-id-substitution-001")
+        permit = self._permit(request)
+        changed = dict(permit.__dict__)
+        changed["key_id"] = "legacy"
+        status, body = self._post({
+            "request": request.to_dict(),
+            "permit": changed,
+        })
+        self.assertEqual(status, 403)
+        self.assertEqual(body.get("code"), "dispatch_denied")
 
     def test_provider_receipt_lookup_requires_a_valid_hmac_signature(self) -> None:
         request = self._request("provider-receipt-auth-001")
