@@ -145,6 +145,20 @@ class OpenAIAgentsSDKIntegrationTests(unittest.TestCase):
         self.assertIn("NOT EXECUTED", pending["boundary_note"])
         self.assertEqual(len(self.adapter.executed), 0)
 
+        # Replaying the same SDK tool-call ID must recover the same pending approval,
+        # not create a second approval record.
+        pending_replay = self.invoke(
+            "request_company_email",
+            {
+                "recipient": "research@example.test",
+                "subject": "Research summary",
+                "body": "Please send the reviewed summary.",
+            },
+            "call_email_001",
+        )
+        self.assertEqual(pending_replay["approval_id"], pending["approval_id"])
+        self.assertTrue(pending_replay.get("replayed"))
+
         # Agent credentials alone cannot approve or execute a pending request.
         premature = self.invoke(
             "execute_reviewer_approved_request",
