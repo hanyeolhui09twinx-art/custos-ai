@@ -174,11 +174,11 @@ if (!home.includes('href="./developers.html"') || !home.includes("Developer quic
   throw new Error("Platform page must show its prototype status and decision-card UI.");
 }
 const technology = fs.readFileSync(path.join(site, "technology.html"), "utf8");
-for (const phrase of ["DISPATCH PERMIT / RE-CHECK", "GUARDED MOCK ADAPTER", "Dispatch permit boundary", "15-second HMAC request-bound permit", "Exact tool binding", "explicitly registered Action/Resource pairs", "Production execution adapter"]) {
+for (const phrase of ["DISPATCH PERMIT / RE-CHECK", "ISOLATED MOCK TOOL PROVIDER", "Dispatch permit boundary", "15-second HMAC request-bound permit", "Exact tool binding", "explicitly registered Action/Resource pairs", "durable SQLite nonce ledger", "Provider process boundary", "not an OS sandbox", "Production execution adapter"]) {
   if (!technology.includes(phrase)) throw new Error("Technology page is missing the guarded adapter boundary description: " + phrase);
 }
 const threatModel = fs.readFileSync(path.join(root, "docs", "THREAT_MODEL.md"), "utf8");
-for (const phrase of ["Dispatch capability lifecycle", "HMAC-signed permit", "in process memory", "not a production key-management", "direct agent-to-tool bypass", "same trusted Python process", "unregistered mock tool pairs"]) {
+for (const phrase of ["Dispatch capability lifecycle", "HMAC-signed permit", "in-memory consumer", "not a production key-management", "direct agent-to-real-tool bypass", "same-host process-separation", "unregistered mock tool pairs"]) {
   if (!threatModel.includes(phrase)) throw new Error("Threat model is missing the adapter-boundary limitation: " + phrase);
 }
 const developerDocs = fs.readFileSync(path.join(site, "developers.html"), "utf8");
@@ -204,10 +204,10 @@ for (const page of ["platform.html", "technology.html", "security.html", "resear
 }
 
 const updates = fs.readFileSync(path.join(site, "updates.html"), "utf8");
-for (const phrase of ["DAY 001", "DAY 002", "DAY 003", "DAY 004", "DAY 005", "DAY 006", "DAY 007", "DAY 008", "NOT VERIFIED", "mock execution adapter", "real-agent bypass resistance"]) {
+for (const phrase of ["DAY 001", "DAY 002", "DAY 003", "DAY 004", "DAY 005", "DAY 006", "DAY 007", "DAY 008", "DAY 009", "NOT VERIFIED", "mock execution adapter", "real-agent bypass resistance"]) {
   if (!updates.toLowerCase().includes(phrase.toLowerCase())) throw new Error("Updates page is missing factual status item: " + phrase);
 }
-for (const log of ["day-001.md", "day-002.md", "day-003.md", "day-004.md", "day-005.md", "day-006.md", "day-007.md", "day-008.md"]) {
+for (const log of ["day-001.md", "day-002.md", "day-003.md", "day-004.md", "day-005.md", "day-006.md", "day-007.md", "day-008.md", "day-009.md"]) {
   if (!updates.includes(log)) throw new Error("Updates page is missing the source development log: " + log);
 }
 
@@ -217,6 +217,14 @@ for (const fragment of ['path == "/health"', 'path == "/v1/requests"', 'path == 
 }
 if (!apiSource.includes('origin != "https://hanyeolhui09twinx-art.github.io"')) {
   throw new Error("API implementation must enforce the documented browser Origin allowlist.");
+}
+const providerSource = fs.readFileSync(path.join(root, "custos_provider.py"), "utf8");
+for (const phrase of ["DurableDispatchPermitVerifier", "BEGIN IMMEDIATE", "consumed_permits", "execute_with_permit", "PROVIDER_PATH"]) {
+  if (!providerSource.includes(phrase)) throw new Error("Provider process is missing a required verification control: " + phrase);
+}
+const providerTests = fs.readFileSync(path.join(root, "tests", "test_provider_process.py"), "utf8");
+for (const phrase of ["subprocess.Popen", "test_provider_permit_is_single_use_under_concurrent_replay", "test_provider_replay_record_survives_process_restart", "test_gateway_fails_closed_when_provider_is_unavailable"]) {
+  if (!providerTests.includes(phrase)) throw new Error("Separate-process integration test is missing: " + phrase);
 }
 const gatewaySource = fs.readFileSync(path.join(root, "custos_gateway.py"), "utf8");
 for (const status of ["pending", "approved", "denied", "expired", "executing", "executed", "blocked", "failed"]) {
@@ -256,6 +264,9 @@ for (const code of ["200", "400", "401", "403", "404", "409", "410", "413", "500
   if (!developerDocs.includes(">" + code + "<")) throw new Error("Developer Docs is missing HTTP status code " + code);
 }
 if (!developerDocs.includes("BLOCK") || !developerDocs.includes("HTTP 200")) throw new Error("Developer Docs must distinguish policy decisions from HTTP response status.");
+for (const phrase of ["custos_provider.py", "CUSTOS_TOOL_PROVIDER_URL", "CUSTOS_DISPATCH_SIGNING_KEY", "same trusted machine", "not an OS sandbox"]) {
+  if (!developerDocs.includes(phrase)) throw new Error("Developer Docs must disclose provider-process setup: " + phrase);
+}
 for (const phrase of ["/v1/requests", "/v1/approvals", "request_id", "research_db", "mock execution adapter", "Do not enter production credentials"]) {
   if (!developerDocs.toLowerCase().includes(phrase.toLowerCase())) throw new Error("Developer Docs is missing an implementation detail: " + phrase);
 }
