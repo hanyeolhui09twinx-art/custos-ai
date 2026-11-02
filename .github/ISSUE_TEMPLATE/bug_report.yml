@@ -1,7 +1,6 @@
 name: Bug report
 description: Report a reproducible issue in the Custos website, Simulation Lab, or local prototype.
 title: "[Bug]: "
-labels: ["bug", "triage"]
 body:
   - type: markdown
     attributes:
