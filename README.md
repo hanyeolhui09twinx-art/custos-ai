@@ -26,6 +26,7 @@ The public site includes dedicated pages:
 | Developer Docs | Local API setup, request schema, routes, and security boundaries |
 | Simulation Lab | Preserved bilingual browser simulation |
 | Local Control Room | Browser console for a locally running Python API |
+| Security Operations | Reviewer-only read-only key-ring status and lifecycle audit viewer |
 
 The site is built as static HTML, CSS, and JavaScript and deployed through GitHub Pages. It is not a hosted SaaS backend.
 
@@ -55,9 +56,9 @@ The original bilingual browser simulation is preserved at [Simulation Lab](https
 
 ### 3. Local Control Room
 
-The [Local Control Room](https://hanyeolhui09twinx-art.github.io/custos-ai/local-console.html) can call the Python API on the user's own computer. The [OpenAPI 3.1 contract](https://hanyeolhui09twinx-art.github.io/custos-ai/openapi.json) documents the local routes and schemas. The page keeps entered tokens in memory rather than localStorage and requires browser Loopback network permission in supported browsers.
+The [Local Control Room](https://hanyeolhui09twinx-art.github.io/custos-ai/local-console.html) can call the Python API on the user's own computer. The [Security Operations view](https://hanyeolhui09twinx-art.github.io/custos-ai/security-ops.html) reads sanitized key-ring state and key lifecycle events using the reviewer token; it is read-only and does not change keys. The [OpenAPI 3.1 contract](https://hanyeolhui09twinx-art.github.io/custos-ai/openapi.json) documents the local routes and schemas. The page keeps entered tokens in memory rather than localStorage and requires browser Loopback network permission in supported browsers.
 
-The hosted site does not provide the Python backend. The API must be started locally.
+The hosted site does not provide the Python backend. The API must be started locally. To view provider state in Security Operations, set `CUSTOS_PROVIDER_DB` and `CUSTOS_PROVIDER_AUDIT_LOG` in the API terminal to the same paths used by the provider process; the defaults in the Developer Guide match.
 
 ## Run locally
 
@@ -134,6 +135,7 @@ All routes except `GET /health` require a Bearer token.
 | GET | `/health` | None | Local service health |
 | POST | `/v1/requests` | Agent | Submit an action request |
 | GET | `/v1/approvals` | Reviewer | List pending approvals |
+| GET | `/v1/security/overview` | Reviewer | Read sanitized gateway/provider key-ring status and filtered lifecycle events |
 | POST | `/v1/approvals/{id}/review` | Reviewer | Approve or deny an exact request |
 | POST | `/v1/approvals/{id}/execute` | Original agent | Execute an approved request once |
 
