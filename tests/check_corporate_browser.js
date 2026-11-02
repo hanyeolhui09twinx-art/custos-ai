@@ -20,8 +20,14 @@ const PAGES = [
   "/company.html",
   "/partnerships.html",
   "/media.html",
-  "/contact.html"
+  "/contact.html",
+  "/privacy.html",
+  "/terms.html",
+  "/updates.html",
+  "/developers.html"
 ];
+
+const RESPONSIVE_WIDTHS = [320, 360, 390, 430, 768, 900, 960, 961, 1024];
 
 async function revealAll(page) {
   const totalHeight = await page.evaluate(() => document.body.scrollHeight);
@@ -36,6 +42,35 @@ async function revealAll(page) {
 
 function recordError(bucket, pageName) {
   return (message) => bucket.push(pageName + ": " + message);
+}
+
+async function checkResponsiveLayout(page, route, failures) {
+  for (const width of RESPONSIVE_WIDTHS) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.waitForTimeout(25);
+    const metrics = await page.evaluate(() => ({
+      viewport: document.documentElement.clientWidth,
+      document: document.documentElement.scrollWidth,
+      body: document.body.scrollWidth,
+      desktopNavVisible: getComputedStyle(document.querySelector(".nav")).display !== "none",
+      menuToggleVisible: getComputedStyle(document.querySelector("[data-menu-toggle]")).display !== "none"
+    }));
+
+    if (metrics.document > metrics.viewport + 1 || metrics.body > metrics.viewport + 1) {
+      failures.push(
+        route + " at " + width + "px has horizontal overflow: " + JSON.stringify(metrics)
+      );
+    }
+
+    const expectsMobileNavigation = width <= 960;
+    if (metrics.menuToggleVisible !== expectsMobileNavigation) {
+      failures.push(route + " at " + width + "px has an incorrect menu-toggle breakpoint");
+    }
+    if (metrics.desktopNavVisible === expectsMobileNavigation) {
+      failures.push(route + " at " + width + "px has an incorrect desktop navigation state");
+    }
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
 }
 
 async function main() {
@@ -101,6 +136,8 @@ async function main() {
         if (!checked.ok()) failures.push(route + " internal link " + href + " returned " + checked.status());
       }
 
+      await checkResponsiveLayout(page, route, failures);
+
       if (pageErrors.length) failures.push(...pageErrors);
       summary.push({ route, heading: mainHeading.replace(/\s+/g, " ").slice(0, 100), status: response.status() });
       await page.close();
@@ -131,6 +168,19 @@ async function main() {
     await mobile.goto(BASE + "/mission.html", { waitUntil: "networkidle" });
     const toggle = mobile.locator("[data-menu-toggle]");
     const menu = mobile.locator("[data-mobile-nav]");
+
+    // Tablet-width navigation must use the compact menu before the desktop links become crowded.
+    await mobile.setViewportSize({ width: 768, height: 900 });
+    assert.equal(await toggle.isVisible(), true, "Tablet layout must show the mobile menu toggle");
+    assert.equal(await mobile.locator(".nav").isVisible(), false, "Tablet layout must hide desktop navigation");
+    await toggle.click();
+    await menu.waitFor({ state: "visible" });
+    await mobile.keyboard.press("Escape");
+    assert.equal(await toggle.getAttribute("aria-expanded"), "false");
+    assert.equal(await toggle.evaluate((el) => document.activeElement === el), true, "Tablet Escape must restore focus to the menu toggle");
+
+    // Verify the narrow mobile menu and keyboard behavior as well.
+    await mobile.setViewportSize({ width: 390, height: 844 });
     assert.equal(await toggle.getAttribute("aria-expanded"), "false");
     await toggle.click();
     assert.equal(await toggle.getAttribute("aria-expanded"), "true");
