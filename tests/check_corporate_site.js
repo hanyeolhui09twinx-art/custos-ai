@@ -225,7 +225,7 @@ if (!apiSource.includes('origin != "https://hanyeolhui09twinx-art.github.io"')) 
   throw new Error("API implementation must enforce the documented browser Origin allowlist.");
 }
 const providerSource = fs.readFileSync(path.join(root, "custos_provider.py"), "utf8");
-for (const phrase of ["DurableDispatchPermitVerifier", "BEGIN IMMEDIATE", "consumed_permits", "ExecutionReceiptStore", "execution_receipts", "recover_interrupted", "execute_with_permit", "get_receipt", "execution_outcome_unknown", "RECEIPT_SIGNATURE_HEADER", "RECEIPT_KEY_ID_HEADER", "receipt_lookup_signature", "verify_receipt_lookup", "CUSTOS_DISPATCH_KEYS", "CUSTOS_ACTIVE_DISPATCH_KEY_ID", "key_id", "PROVIDER_PATH"]) {
+for (const phrase of ["DurableDispatchPermitVerifier", "KeyRingLifecycle", "key_fingerprints", "audit_path", "BEGIN IMMEDIATE", "consumed_permits", "ExecutionReceiptStore", "execution_receipts", "recover_interrupted", "execute_with_permit", "get_receipt", "execution_outcome_unknown", "RECEIPT_SIGNATURE_HEADER", "RECEIPT_KEY_ID_HEADER", "receipt_lookup_signature", "verify_receipt_lookup", "CUSTOS_DISPATCH_KEYS", "CUSTOS_ACTIVE_DISPATCH_KEY_ID", "key_id", "PROVIDER_PATH"]) {
   if (!providerSource.includes(phrase)) throw new Error("Provider process is missing a required verification control: " + phrase);
 }
 const providerTests = fs.readFileSync(path.join(root, "tests", "test_provider_process.py"), "utf8");
@@ -241,6 +241,13 @@ for (const phrase of ["test_initialization_records_key_ids_without_secret_materi
   if (!keyringAuditTests.includes(phrase)) throw new Error("Key lifecycle audit test is missing: " + phrase);
 }
 const gatewaySource = fs.readFileSync(path.join(root, "custos_gateway.py"), "utf8");
+for (const phrase of ["KeyRingLifecycle", "key_fingerprints", "active_key_id"]) {
+  if (!gatewaySource.includes(phrase)) throw new Error("Gateway key lifecycle integration is missing: " + phrase);
+}
+const gatewayAuditTests = fs.readFileSync(path.join(root, "tests", "test_custos.py"), "utf8");
+if (!gatewayAuditTests.includes("test_gateway_audits_key_ring_changes_without_logging_key_material")) {
+  throw new Error("Gateway key lifecycle integration test is missing.");
+}
 for (const phrase of ["recover_interrupted_requests", "GATEWAY_RECOVERED_INCOMPLETE_REQUESTS", "get_for_request", "EXECUTION_UNKNOWN", "status='indeterminate'"]) {
   if (!gatewaySource.includes(phrase)) throw new Error("Gateway restart recovery control is missing: " + phrase);
 }
