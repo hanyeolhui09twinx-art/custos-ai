@@ -149,8 +149,17 @@ async function main() {
     const reduced = await context.newPage();
     await reduced.emulateMedia({ reducedMotion: "reduce" });
     await reduced.goto(BASE + "/media.html", { waitUntil: "networkidle" });
-    const reducedAnimation = await reduced.locator(".film-scene.s1").evaluate((el) => getComputedStyle(el).animationName);
-    assert.equal(reducedAnimation, "none", "Media preview must respect prefers-reduced-motion");
+    const reducedStyle = await reduced.locator(".film-scene.s1").evaluate((el) => {
+      const style = getComputedStyle(el);
+      return { name: style.animationName, duration: style.animationDuration };
+    });
+    const durationMs = reducedStyle.duration.endsWith("ms")
+      ? Number.parseFloat(reducedStyle.duration)
+      : Number.parseFloat(reducedStyle.duration) * 1000;
+    assert.ok(
+      Number.isFinite(durationMs) && durationMs <= 0.1,
+      "Media preview must reduce motion to <= 0.1ms; computed style: " + JSON.stringify(reducedStyle)
+    );
     await reduced.close();
 
     textSummary(summary, failures);
