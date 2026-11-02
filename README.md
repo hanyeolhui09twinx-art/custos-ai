@@ -152,6 +152,39 @@ When the gateway submits a request but does not receive a definite provider resp
 
 On gateway startup, any local request receipt left in `processing` is changed to `indeterminate`. The next same-ID request first looks for an existing request-bound approval, then checks the provider receipt. It can recover a pending approval without creating a second approval ID, or recover a completed provider result without redispatch. Approved executions left in `executing` are also reconciled against the provider receipt. If neither source can prove the outcome, it stays `EXECUTION_UNKNOWN`. The current recovery assumes a single gateway instance owns this local SQLite database; multi-worker recovery leases are not implemented.
 
+### Optional OpenAI Agents SDK integration
+
+Custos includes an adapter for the OpenAI Agents SDK Python `function_tool` runtime. The optional dependency is pinned in `requirements-agents.txt` (`openai-agents==0.24.0`). The adapter exposes exactly three Custos-mediated functions through `create_custos_agent()`:
+
+- `read_research_database` submits `read_database` / `research_db` through `POST /v1/requests`.
+- `request_company_email` submits `send_email` / `company_email`. The example policy returns `HUMAN_APPROVAL`; this does not send an email.
+- `execute_reviewer_approved_request` asks Custos to execute an approval ID using the original Agent identity. The gateway rejects it unless a separate Reviewer has already approved the exact request.
+
+Install the optional SDK and start the local API in PowerShell:
+
+~~~powershell
+python -m pip install -r requirements-agents.txt
+$agentToken = python -c "import secrets; print(secrets.token_urlsafe(32))"
+$reviewerToken = python -c "import secrets; print(secrets.token_urlsafe(32))"
+$env:CUSTOS_AGENT_TOKENS = '{"research_agent":"' + $agentToken + '"}'
+$env:CUSTOS_REVIEWER_TOKEN = $reviewerToken
+python custos_api.py
+~~~
+
+In a second terminal, use the same Agent token and an OpenAI development key:
+
+~~~powershell
+$env:CUSTOS_AGENT_TOKEN = '<copy the research_agent token from Terminal A>'
+$env:OPENAI_API_KEY = '<your development key>'
+python examples/openai_agents_sdk_custos.py
+~~~
+
+The current gateway uses `MockExecutionAdapter`: the research read and any approved email action are simulated. No real database or email system is connected. The SDK tool-call ID is converted into a stable Custos request ID for idempotent retries of the same SDK call.
+
+**Enforcement boundary:** `create_custos_agent()` configures only the three Custos function tools. Do not append raw Python functions, hosted tools, MCP servers, shell/computer tools, handoffs, or other execution surfaces and assume this adapter mediates them. Those surfaces require their own Custos-side gateway or server-side enforcement. This integration demonstrates one framework path; it does not prove that every possible Agent action in a process is mediated.
+
+CI installs the pinned optional dependency and invokes the Agents SDK `FunctionTool` runtime against a local Custos test server. These contract tests do not call an OpenAI model or require an API key.
+
 ## Contributing\n\nSee [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, engineering expectations, required tests, and security rules. Pull requests use a structured checklist in `.github/PULL_REQUEST_TEMPLATE.md`.\n\n## Feedback and collaboration\n\nGitHub Issues includes structured templates for reproducible bug reports and research/collaboration proposals. Public issues should never include secrets, customer data, or confidential details.\n\n## Automated checks and deployment
 
 GitHub Actions runs:
