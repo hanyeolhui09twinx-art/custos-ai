@@ -147,6 +147,10 @@ if (!developerDocs.includes('Invoke-RestMethod -Method Post') || !developerDocs.
   throw new Error("Developer Docs must contain a working-style local request and approval walkthrough.");
 }
 if (!developerDocs.includes('-Body "{}"')) throw new Error("Execute example must send the required JSON request body.");
+for (const code of ["200", "400", "401", "403", "404", "409", "410", "413", "500"]) {
+  if (!developerDocs.includes(">" + code + "<")) throw new Error("Developer Docs is missing HTTP status code " + code);
+}
+if (!developerDocs.includes("BLOCK") || !developerDocs.includes("HTTP 200")) throw new Error("Developer Docs must distinguish policy decisions from HTTP response status.");
 for (const phrase of ["/v1/requests", "/v1/approvals", "request_id", "research_db", "mock execution adapter", "Do not enter production credentials"]) {
   if (!developerDocs.toLowerCase().includes(phrase.toLowerCase())) throw new Error("Developer Docs is missing an implementation detail: " + phrase);
 }
