@@ -41,6 +41,11 @@ for (const file of allPages) {
       }
       if (!/rel="canonical"/.test(html)) throw new Error(file + ": missing canonical URL");
     }
+    if (file !== "404.html") {
+      if (!/class="header-cta" href="\.\/local-console\.html"/.test(html) || !html.includes("Local Control Room")) {
+        throw new Error(file + ": header must clearly label its local-only Control Room link.");
+      }
+    }
   }
 
   const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
@@ -106,6 +111,7 @@ if (!lab.includes("img-src 'self' data:")) throw new Error("Lab CSP must permit 
 if (!lab.includes('href="./index.html"')) throw new Error("Lab is missing a return link to the corporate website.");
 const localConsole = fs.readFileSync(path.join(site, "local-console.html"), "utf8");
 if (!localConsole.includes("img-src 'self'")) throw new Error("Local Control Room CSP must permit its same-origin brand icon.");
+if (!localConsole.includes('href="./index.html"')) throw new Error("Local Control Room is missing its corporate website return link.");
 if (!localConsole.includes('href="./lab.html"') || !localConsole.includes('href="./index.html"')) {
   throw new Error("Local Control Room must link back to both the Lab and corporate website.");
 }
