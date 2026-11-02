@@ -267,9 +267,6 @@ if (!developerDocs.includes("BLOCK") || !developerDocs.includes("HTTP 200")) thr
 for (const phrase of ["custos_provider.py", "CUSTOS_TOOL_PROVIDER_URL", "CUSTOS_DISPATCH_SIGNING_KEY", "same trusted machine", "OS sandboxing"]) {
   if (!developerDocs.includes(phrase)) throw new Error("Developer Docs must disclose provider-process setup: " + phrase);
 }
-for (const phrase of ["custos_provider.py", "CUSTOS_TOOL_PROVIDER_URL", "CUSTOS_DISPATCH_SIGNING_KEY", "same trusted machine", "not an OS sandbox"]) {
-  if (!developerDocs.includes(phrase)) throw new Error("Developer Docs must disclose provider-process setup: " + phrase);
-}
 for (const phrase of ["/v1/requests", "/v1/approvals", "request_id", "research_db", "mock execution adapter", "Do not enter production credentials"]) {
   if (!developerDocs.toLowerCase().includes(phrase.toLowerCase())) throw new Error("Developer Docs is missing an implementation detail: " + phrase);
 }
