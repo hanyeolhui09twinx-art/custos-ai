@@ -4,7 +4,7 @@
     "title": "Custos Local Prototype API",
     "version": "0.2.0-prototype",
     "summary": "Loopback-only API for the current Custos research prototype.",
-    "description": "This contract documents the repository implementation. It is not a production API guarantee. The execution adapter is a mock and does not call external tools."
+    "description": "This contract documents the repository implementation. It is not a production API guarantee. The execution adapter is a mock and does not call external tools. Browser CORS is allowlisted only for https://hanyeolhui09twinx-art.github.io; requests from other browser origins are denied."
   },
   "servers": [
     {
