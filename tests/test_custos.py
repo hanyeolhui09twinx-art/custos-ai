@@ -99,6 +99,23 @@ class GatewayTestCase(unittest.TestCase):
             self.gateway.adapter.execute(request, fresh)
         self.assertEqual(len(self.adapter.executed), 1)
 
+    def test_dispatch_permit_is_single_use_under_concurrent_replay(self) -> None:
+        request = self.request()
+        permit = self.gateway._dispatch_authority.issue(request, mode="ALLOW")
+
+        def attempt() -> str:
+            try:
+                self.gateway.adapter.execute(request, permit)
+                return "executed"
+            except DispatchAuthorizationError:
+                return "rejected"
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            outcomes = list(pool.map(lambda _: attempt(), range(2)))
+
+        self.assertCountEqual(outcomes, ["executed", "rejected"])
+        self.assertEqual(len(self.adapter.executed), 1)
+
     def test_adapter_rechecks_policy_at_the_tool_boundary(self) -> None:
         request = self.request()
         permit = self.gateway._dispatch_authority.issue(request, mode="ALLOW")
