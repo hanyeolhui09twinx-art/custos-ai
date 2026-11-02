@@ -77,7 +77,7 @@ class CustosClient:
         except ValueError:
             is_loopback = False
         if not is_loopback:
-            raise ValueError("Remote Custos API connections are disabled in this prototype client.")
+            raise ValueError("CustosClient requires a loopback API address; remote connections are disabled in this prototype.")
         try:
             port = parts.port
         except ValueError as exc:
