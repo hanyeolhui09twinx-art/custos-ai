@@ -308,12 +308,54 @@ class ExecutionReceiptStore:
         return result
 
 
+class ProviderToolRegistry:
+    """Provider-side, deny-by-default binding of agent, action, resource, and permit mode."""
+
+    DEFAULT_BINDINGS = {
+        ("research_agent", "read_database", "research_db"): "ALLOW",
+        ("research_agent", "send_email", "company_email"): "APPROVED",
+    }
+
+    def __init__(self, bindings: dict[tuple[str, str, str], str] | None = None) -> None:
+        configured = self.DEFAULT_BINDINGS if bindings is None else bindings
+        if not isinstance(configured, dict) or not configured:
+            raise ValueError("Provider tool bindings must be a non-empty mapping.")
+        self._bindings: dict[tuple[str, str, str], str] = {}
+        for binding, required_mode in configured.items():
+            if (
+                not isinstance(binding, tuple)
+                or len(binding) != 3
+                or not all(isinstance(part, str) and IDENTIFIER_RE.fullmatch(part) for part in binding)
+            ):
+                raise ValueError("Provider bindings must be exact (agent, action, resource) identifier triples.")
+            if required_mode not in {"ALLOW", "APPROVED"}:
+                raise ValueError("Provider bindings must require ALLOW or APPROVED permits.")
+            self._bindings[binding] = required_mode
+
+    def required_mode(self, request: ActionRequest) -> str:
+        binding = (request.agent_id, request.action, request.resource)
+        required_mode = self._bindings.get(binding)
+        if required_mode is None:
+            raise DispatchAuthorizationError(
+                "No Provider tool binding exists for this agent/action/resource tuple."
+            )
+        return required_mode
+
+    def authorize(self, request: ActionRequest, permit: DispatchPermit) -> None:
+        required_mode = self.required_mode(request)
+        if permit.mode != required_mode:
+            raise DispatchAuthorizationError(
+                "The signed permit mode does not satisfy the Provider tool binding."
+            )
+
+
 class ToolProviderService:
     """The provider owns its tool registry; the calling agent receives no tool client."""
 
     def __init__(self, verifier: DurableDispatchPermitVerifier) -> None:
         self.verifier = verifier
         self.receipts = ExecutionReceiptStore(verifier.db_path)
+        self.registry = ProviderToolRegistry()
         self.adapter = MockExecutionAdapter()
 
     def get_receipt(self, agent_id: str, request_id: str) -> dict[str, Any] | None:
@@ -334,7 +376,13 @@ class ToolProviderService:
             "action": data["action"], "resource": data["resource"],
             "parameters": data["parameters"], "request_id": data["request_id"],
         })
-        self.verifier.consume(request, payload["permit"])
+        # The Provider independently checks the exact agent/action/resource
+        # binding and required permit mode before accepting a signed capability.
+        expected_mode = self.registry.required_mode(request)
+        permit = self.verifier.consume(request, payload["permit"])
+        self.registry.authorize(request, permit)
+        if permit.mode != expected_mode:
+            raise DispatchAuthorizationError("Provider permit mode does not match the registered tool binding.")
         # The durable receipt is claimed before the tool is invoked. An interrupted
         # execution is never replayed automatically.
         return self.receipts.execute_once(request, self.adapter.execute)
