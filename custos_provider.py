@@ -197,7 +197,7 @@ def create_provider_server(
     signing_key: bytes, db_path: str | Path = ".custos-data/provider-replay.sqlite3",
     host: str = "127.0.0.1", port: int = 8766,
 ) -> ToolProviderHTTPServer:
-    if host not in {"127.0.0.1", "localhost", "::1"}:
+    if host != "127.0.0.1":
         raise ValueError("The mock provider only binds to loopback.")
     return ToolProviderHTTPServer(
         (host, port), ToolProviderService(DurableDispatchPermitVerifier(db_path, signing_key))
@@ -209,7 +209,7 @@ class HttpToolProviderAdapter:
 
     def __init__(self, endpoint: str, timeout_seconds: float = 3.0) -> None:
         parsed = urlsplit(endpoint)
-        if (parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}
+        if (parsed.scheme != "http" or parsed.hostname != "127.0.0.1"
                 or parsed.username is not None or parsed.password is not None
                 or parsed.path != PROVIDER_PATH or parsed.query or parsed.fragment):
             raise ValueError("Endpoint must be the loopback HTTP /v1/dispatch route.")
