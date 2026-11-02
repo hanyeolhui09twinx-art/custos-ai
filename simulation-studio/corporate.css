@@ -201,3 +201,11 @@
  .mobile-nav a{padding:12px 2px;border-bottom:1px solid var(--line);font-size:11px}
 }
 @media(max-width:760px){.mobile-nav{top:70px}}
+
+
+/* Narrow timeline: keep the content track inside the page container. */
+@media(max-width:460px){
+ .timeline{width:calc(100% - 8px);min-width:0}
+ .timeline-item{min-width:0;max-width:100%;overflow-wrap:anywhere}
+ .timeline-item strong{overflow-wrap:anywhere}
+}
