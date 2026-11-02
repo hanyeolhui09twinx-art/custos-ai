@@ -61,6 +61,19 @@ for (const file of allPages) {
 const js = fs.readFileSync(path.join(site, "corporate.js"), "utf8");
 new vm.Script(js, {filename: "corporate.js"});
 const css = fs.readFileSync(path.join(site, "corporate.css"), "utf8");
+const accentMatch = css.match(/--accent-dark:\s*(#[0-9a-f]{6})/i);
+if (!accentMatch) throw new Error("Missing accessible dark accent token.");
+function luminance(hex) {
+  const rgb = hex.slice(1).match(/../g).map(pair => parseInt(pair, 16) / 255).map(value =>
+    value <= 0.04045 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4));
+  return 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+}
+const contrast = 1.05 / (luminance(accentMatch[1]) + 0.05);
+if (contrast < 4.5) throw new Error("Dark accent fails 4.5:1 contrast against white.");
+if (!css.includes(".btn,.header-cta,.run-case{background:var(--accent-dark)")) {
+  throw new Error("Primary controls must use the contrast-safe dark accent.");
+}
+
 if (/@import\s+url/i.test(css)) throw new Error("Corporate CSS must not depend on external font imports.");
 if (!js.includes("review.hidden=!pending")) throw new Error("Human-approval demo does not reveal its review controls.");
 if (!js.includes("data-lang-button")) throw new Error("Bilingual control handler is missing.");
