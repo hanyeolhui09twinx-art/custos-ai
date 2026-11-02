@@ -230,6 +230,16 @@ function renderEvents(events){
   row.append(time,component,type,detail);body.appendChild(row);
  });
 }
+function resetSummary(){
+ ["gateway","provider"].forEach(prefix=>{
+  $(prefix+"Status").textContent="NOT LOADED";
+  $(prefix+"Status").className="status-chip";
+  $(prefix+"Integrity").textContent=words[lang].audit+" · —";
+  $(prefix+"Active").textContent="—";
+  addPills($(prefix+"Accepted"),[],null,"accepted");
+  addPills($(prefix+"Revoked"),[],null,"revoked");
+ });
+}
 let cached=null;
 async function load(){
  $("loadBtn").disabled=true;$("refreshBtn").disabled=true;setConnection(words[lang].loading);
@@ -245,7 +255,7 @@ async function load(){
 $("ko").addEventListener("click",()=>{setLanguage("ko");if(cached){renderComponent("gateway",cached.components.gateway);renderComponent("provider",cached.components.provider);renderEvents(cached.events)}});
 $("en").addEventListener("click",()=>{setLanguage("en");if(cached){renderComponent("gateway",cached.components.gateway);renderComponent("provider",cached.components.provider);renderEvents(cached.events)}});
 $("loadBtn").addEventListener("click",load);$("refreshBtn").addEventListener("click",load);
-$("clearBtn").addEventListener("click",()=>{$("reviewerToken").value="";cached=null;setConnection(lang==="ko"?"이 페이지에서 검토자 토큰을 지웠습니다.":"Reviewer token cleared from this page.");renderEvents([]);});
+$("clearBtn").addEventListener("click",()=>{$("reviewerToken").value="";cached=null;setConnection(lang==="ko"?"이 페이지에서 검토자 토큰을 지웠습니다.":"Reviewer token cleared from this page.");resetSummary();renderEvents([]);});
 setLanguage("ko");
 $("emptyEvents").textContent=words[lang].emptyInitial;
 })();
