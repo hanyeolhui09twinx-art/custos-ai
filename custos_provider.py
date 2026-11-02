@@ -17,6 +17,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, unquote, urlsplit
 from urllib.request import Request, urlopen
 
+from audit_log import AuditLog
+from keyring_audit import KeyRingLifecycle
 from custos_gateway import (
     ActionRequest, DispatchAuthorizationError, DispatchAuthority, IDENTIFIER_RE,
     REQUEST_ID_RE, DispatchPermit, MockExecutionAdapter, canonical_json,
@@ -93,6 +95,10 @@ class DurableDispatchPermitVerifier:
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         self._keys = keys
         self._active_key_id = active_key_id
+        self._key_fingerprints = {
+            key_id: hashlib.sha256(key_value).hexdigest()
+            for key_id, key_value in keys.items()
+        }
         self._clock = clock
         self._ttl = float(max_ttl_seconds)
         with self._connect() as conn:
@@ -100,6 +106,10 @@ class DurableDispatchPermitVerifier:
                 nonce TEXT PRIMARY KEY, request_digest TEXT NOT NULL,
                 expires_at REAL NOT NULL, consumed_at REAL NOT NULL)""")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_consumed_permits_expiry ON consumed_permits(expires_at)")
+
+    @property
+    def key_fingerprints(self) -> dict[str, str]:
+        return dict(self._key_fingerprints)
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path, timeout=10, isolation_level=None)
@@ -425,6 +435,7 @@ def create_provider_server(
     port: int = 8766,
     signing_keys: dict[str, bytes] | None = None,
     active_key_id: str = "default",
+    audit_path: str | Path | None = None,
 ) -> ToolProviderHTTPServer:
     if host != "127.0.0.1":
         raise ValueError("The mock provider only binds to loopback.")
@@ -433,6 +444,10 @@ def create_provider_server(
         signing_key=signing_key,
         signing_keys=signing_keys,
         active_key_id=active_key_id,
+    )
+    resolved_audit_path = Path(audit_path) if audit_path is not None else Path(db_path).with_suffix(".audit.jsonl")
+    KeyRingLifecycle(db_path, AuditLog(str(resolved_audit_path)), component="provider").observe(
+        verifier.key_fingerprints, active_key_id
     )
     service = ToolProviderService(verifier)
     return ToolProviderHTTPServer((host, port), service)
@@ -559,6 +574,7 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8766)
     parser.add_argument("--db", default=".custos-data/provider-replay.sqlite3")
+    parser.add_argument("--audit", default=None, help="Provider key-lifecycle audit JSONL path")
     args = parser.parse_args()
     active_key_id = os.environ.get("CUSTOS_ACTIVE_DISPATCH_KEY_ID", "default")
     raw_key_ring = os.environ.get("CUSTOS_DISPATCH_KEYS", "")
@@ -586,7 +602,7 @@ def main() -> None:
             raise SystemExit("CUSTOS_ACTIVE_DISPATCH_KEY_ID must exist in CUSTOS_DISPATCH_KEYS.")
         server = create_provider_server(
             db_path=args.db, host=args.host, port=args.port,
-            signing_keys=key_ring, active_key_id=active_key_id,
+            signing_keys=key_ring, active_key_id=active_key_id, audit_path=args.audit,
         )
     else:
         try:
@@ -597,7 +613,7 @@ def main() -> None:
             raise SystemExit("CUSTOS_DISPATCH_SIGNING_KEY must encode at least 32 bytes.")
         server = create_provider_server(
             key, db_path=args.db, host=args.host, port=args.port,
-            active_key_id=active_key_id,
+            active_key_id=active_key_id, audit_path=args.audit,
         )
     print(f"Custos mock tool provider listening on {args.host}:{args.port}", flush=True)
     try:
