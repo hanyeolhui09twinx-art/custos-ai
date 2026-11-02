@@ -52,6 +52,10 @@ class DispatchAuthorizationError(ApprovalError):
     """A dispatch permit is absent, invalid, expired, replayed, or no longer authorized."""
 
 
+class DispatchOutcomeUnknown(ApprovalError):
+    """The provider may have accepted the request, but its result was not received."""
+
+
 def canonical_json(value: Any) -> str:
     return json.dumps(
         value,
@@ -384,6 +388,12 @@ class GuardedExecutionAdapter:
             return permitted_dispatch(request, permit)
         return self._delegate.execute(request)
 
+    def get_receipt(self, agent_id: str, request_id: str) -> dict[str, Any] | None:
+        receipt_lookup = getattr(self._delegate, "get_receipt", None)
+        if not callable(receipt_lookup):
+            return None
+        return receipt_lookup(agent_id, request_id)
+
 
 class RegisteredToolAdapter:
     """Dispatch only to an explicitly registered (action, resource) handler."""
@@ -668,7 +678,7 @@ class ApprovalStore:
 
 
     def finish_execution(self, approval_id: str, status: str, result: dict[str, Any] | None = None) -> None:
-        if status not in {"executed", "failed", "blocked"}:
+        if status not in {"executed", "failed", "blocked", "indeterminate"}:
             raise ValueError("Invalid terminal approval status.")
         result_json = canonical_json(result) if result is not None else None
         with self._connect() as conn:
@@ -719,6 +729,8 @@ class CustosGateway:
                 "REQUEST_REPLAYED",
                 {"request_id": request.request_id, "agent_id": request.agent_id},
             )
+            if cached.get("decision") == "EXECUTION_UNKNOWN":
+                return self.reconcile_execution(request, cached)
             return cached
 
         try:
@@ -780,6 +792,19 @@ class CustosGateway:
         permit = self._dispatch_authority.issue(request, mode="ALLOW")
         try:
             result = self.adapter.execute(request, permit)
+        except DispatchOutcomeUnknown:
+            response = {
+                "decision": "EXECUTION_UNKNOWN",
+                "reason": "The provider may have accepted the request, but the execution result was not received. Do not submit a new request ID.",
+                "executed": None,
+                "execution_status": "unknown",
+                "request_id": request.request_id,
+            }
+            self.audit_log.record(
+                "EXECUTION_OUTCOME_UNKNOWN",
+                {"request_id": request.request_id, "agent_id": request.agent_id},
+            )
+            return response
         except DispatchAuthorizationError:
             self.audit_log.record(
                 "DISPATCH_BLOCKED_AT_ADAPTER_BOUNDARY",
@@ -799,6 +824,69 @@ class CustosGateway:
             "result": result,
             "request_id": request.request_id,
         }
+
+    def reconcile_execution(
+        self,
+        request: ActionRequest,
+        cached_response: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Read provider state after a lost response; never automatically re-dispatch."""
+        cached = cached_response or {
+            "decision": "EXECUTION_UNKNOWN",
+            "reason": "Execution outcome has not been confirmed.",
+            "executed": None,
+            "execution_status": "unknown",
+            "request_id": request.request_id,
+        }
+        try:
+            receipt = self.adapter.get_receipt(request.agent_id, request.request_id)
+        except Exception:
+            receipt = None
+            cached = {**cached, "reconciliation_status": "provider_unavailable", "replayed": True}
+            self.audit_log.record(
+                "EXECUTION_RECONCILIATION_UNAVAILABLE",
+                {"request_id": request.request_id, "agent_id": request.agent_id},
+            )
+            return cached
+
+        if receipt is None:
+            updated = {**cached, "reconciliation_status": "receipt_not_found", "replayed": True}
+        elif receipt.get("request_digest") != request.digest:
+            updated = {**cached, "reconciliation_status": "receipt_digest_mismatch", "replayed": True}
+            self.audit_log.record(
+                "EXECUTION_RECEIPT_DIGEST_MISMATCH",
+                {"request_id": request.request_id, "agent_id": request.agent_id},
+            )
+        elif receipt.get("status") == "completed" and isinstance(receipt.get("result"), dict):
+            updated = {
+                "decision": Decision.ALLOW.value,
+                "reason": "The provider's durable execution receipt confirms completion.",
+                "executed": True,
+                "execution_status": "completed",
+                "result": receipt["result"],
+                "request_id": request.request_id,
+                "reconciled": True,
+                "replayed": True,
+            }
+            self.audit_log.record(
+                "EXECUTION_RECONCILED_COMPLETED",
+                {"request_id": request.request_id, "agent_id": request.agent_id},
+            )
+        else:
+            state = receipt.get("status", "unknown")
+            updated = {
+                **cached,
+                "execution_status": state,
+                "reconciliation_status": state,
+                "replayed": True,
+            }
+            self.audit_log.record(
+                "EXECUTION_RECONCILED_UNRESOLVED",
+                {"request_id": request.request_id, "agent_id": request.agent_id, "provider_state": state},
+            )
+
+        self.store.update_request_result(request, updated)
+        return updated
 
     def review_approval(self, approval_id: str, reviewer_id: str, approve: bool) -> dict[str, Any]:
         original = self.store.get(approval_id)
@@ -892,6 +980,29 @@ class CustosGateway:
                 "result": result,
             }
             self.store.update_request_result(request, response)
+            return response
+        except DispatchOutcomeUnknown:
+            try:
+                self.store.finish_execution(
+                    approval_id,
+                    "indeterminate",
+                    {"reason": "Provider response was not received; execution may have occurred."},
+                )
+            except ApprovalError:
+                pass
+            response = {
+                "decision": "EXECUTION_UNKNOWN",
+                "reason": "The provider may have executed the approved action, but the result was not received. Reconcile the provider receipt before taking further action.",
+                "executed": None,
+                "execution_status": "indeterminate",
+                "approval_id": approval_id,
+                "request_id": request.request_id,
+            }
+            self.store.update_request_result(request, response)
+            self.audit_log.record(
+                "APPROVED_ACTION_OUTCOME_UNKNOWN",
+                {"approval_id": approval_id, "request_id": request.request_id},
+            )
             return response
         except Exception as exc:
             try:
