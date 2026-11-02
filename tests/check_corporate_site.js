@@ -101,7 +101,7 @@ for (const page of ["platform.html", "technology.html", "security.html", "resear
 }
 
 const terms = fs.readFileSync(path.join(site, "terms.html"), "utf8");
-for (const phrase of ["Simulation Lab", "Local Control Room", "mock", "development"]) {
+for (const phrase of ["Simulation Lab", "Local Control Room", "commercial SaaS", "development"]) {
   if (!terms.toLowerCase().includes(phrase.toLowerCase())) throw new Error("Terms of Use is missing boundary disclosure: " + phrase);
 }
 const sitemap = fs.readFileSync(path.join(site, "sitemap.xml"), "utf8");
