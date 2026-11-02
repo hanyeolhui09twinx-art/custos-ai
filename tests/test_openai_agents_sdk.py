@@ -62,7 +62,7 @@ class OpenAIAgentsSDKIntegrationTests(unittest.TestCase):
         host, port = self.server.server_address
         self.base_url = f"http://{host}:{port}"
         self.client = CustosClient(AGENT_TOKEN, base_url=self.base_url, timeout=3)
-        self.agent = create_custos_agent(self.client, model="gpt-5.6-mini")
+        self.agent = create_custos_agent(self.client)
         self.assertIsInstance(self.agent, Agent)
         self.tools = {tool.name: tool for tool in self.agent.tools}
 
