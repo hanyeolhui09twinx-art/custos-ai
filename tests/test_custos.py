@@ -250,6 +250,26 @@ class GatewayTestCase(unittest.TestCase):
         self.assertEqual(self.store.get(approval_id)["status"], "approved")
         self.assertEqual(self.adapter.executed, [])
 
+    def test_raw_secrets_are_rejected_but_credential_references_are_allowed(self) -> None:
+        with self.assertRaises(ValueError):
+            ActionRequest.from_payload(
+                "research_agent",
+                {
+                    "action": "read_database",
+                    "resource": "research_db",
+                    "parameters": {"query": {"client_secret": "do-not-store-this"}},
+                },
+            )
+        request = ActionRequest.from_payload(
+            "research_agent",
+            {
+                "action": "read_database",
+                "resource": "research_db",
+                "parameters": {"credential_ref": "vault://custos/research-db"},
+            },
+        )
+        self.assertEqual(request.parameters["credential_ref"], "vault://custos/research-db")
+
     def test_audit_log_detects_modified_entry(self) -> None:
         path = Path(self.temp.name) / "tamper.jsonl"
         log = AuditLog(str(path))
