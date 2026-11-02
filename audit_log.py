@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import os
 import threading
@@ -60,7 +61,6 @@ class AuditLog:
             raise ValueError("audit data must be a JSON object.")
 
         with self._lock:
-            # Detect changes made since this AuditLog instance was initialized.
             if not self.verify():
                 raise ValueError("Audit log integrity check failed; refusing to append.")
             current_hash = self._get_last_hash()
@@ -106,7 +106,7 @@ class AuditLog:
                     unsigned_entry = dict(entry)
                     del unsigned_entry["entry_hash"]
                     calculated_hash = hashlib.sha256(self._canonical(unsigned_entry)).hexdigest()
-                    if not hashlib.compare_digest(calculated_hash, stored_hash):
+                    if not hmac.compare_digest(calculated_hash, stored_hash):
                         return False
                     previous_hash = stored_hash
         except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError):
