@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Custos threat model and security limitations
+    url: https://github.com/hanyeolhui09twinx-art/custos-ai/blob/main/docs/THREAT_MODEL.md
+    about: Review assumptions, blind spots, counterarguments, edge cases, and self-critique before filing.
+  - name: Custos source repository
+    url: https://github.com/hanyeolhui09twinx-art/custos-ai
+    about: Inspect the implementation and current development status.
