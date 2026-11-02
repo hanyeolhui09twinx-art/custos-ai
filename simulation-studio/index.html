@@ -121,17 +121,17 @@
  <div class="preview-shell reveal">
   <div class="preview-copy"><div class="eyebrow" style="color:#9eb3ae">POLICY PLAYGROUND / DEMO</div><h3 data-ko="요청을 선택하고<br>판정을 실행하세요." data-en="Select a request.<br>Run the policy check.">요청을 선택하고<br>판정을 실행하세요.</h3><p data-ko="행동 종류에 따라 허용·인간 승인·차단 결과가 달라집니다. 승인 데모도 가상 상태만 바꿉니다." data-en="The decision changes with the requested action. The approval interaction changes demo state only.">행동 종류에 따라 허용·인간 승인·차단 결과가 달라집니다. 승인 데모도 가상 상태만 바꿉니다.</p>
    <div class="case-list">
-    <button class="case-btn active" type="button" data-demo-case="read"><span><strong>Read research database</strong><small>read_database · research_db</small></span><span class="case-num">01</span></button>
-    <button class="case-btn" type="button" data-demo-case="email"><span><strong>Send external email</strong><small>send_email · company_email</small></span><span class="case-num">02</span></button>
-    <button class="case-btn" type="button" data-demo-case="disable"><span><strong>Disable control layer</strong><small>disable_custos · custos_core</small></span><span class="case-num">03</span></button>
+    <button class="case-btn active" type="button" data-demo-case="read" aria-pressed="true"><span><strong>Read research database</strong><small>read_database · research_db</small></span><span class="case-num">01</span></button>
+    <button class="case-btn" type="button" data-demo-case="email" aria-pressed="false"><span><strong>Send external email</strong><small>send_email · company_email</small></span><span class="case-num">02</span></button>
+    <button class="case-btn" type="button" data-demo-case="disable" aria-pressed="false"><span><strong>Disable control layer</strong><small>disable_custos · custos_core</small></span><span class="case-num">03</span></button>
    </div>
   </div>
   <div class="preview-screen"><div class="screen-head"><span>CUSTOS POLICY ENGINE</span><b>● BROWSER DEMO</b></div>
    <div class="request-box"><div class="request-top"><span>INCOMING REQUEST</span><span>REQUEST / 0001</span></div><h4 id="demoAction">read_database</h4>
     <div class="request-fields"><div class="request-field"><small>RESOURCE</small><strong id="demoResource">research_db</strong></div><div class="request-field"><small>POLICY SCOPE</small><strong id="demoScope">READ ONLY</strong></div><div class="request-field"><small>EXTERNAL EFFECT</small><strong id="demoEffect">NONE / MOCK</strong></div><div class="request-field"><small>REQUESTER</small><strong>research_agent</strong></div></div>
-    <div class="decision-row"><div class="decision-value"><i class="decision-led" id="demoLed"></i><span id="demoDecision">판정 대기</span></div><button class="run-case" type="button" data-demo-run data-ko="정책 판정 실행" data-en="Run policy check">정책 판정 실행</button></div>
-    <p class="decision-desc" id="demoDescription">시나리오를 선택하고 정책 판정을 실행하세요.</p>
-    <div id="demoReview" hidden style="gap:8px;margin-top:10px"><button type="button" data-demo-approve class="run-case">Approve · MOCK</button><button type="button" data-demo-deny class="run-case" style="background:#7c4b47">Deny</button></div>
+    <div class="decision-row"><div class="decision-value"><i class="decision-led" id="demoLed"></i><span id="demoDecision" role="status" aria-live="polite">판정 대기</span></div><button class="run-case" type="button" data-demo-run data-ko="정책 판정 실행" data-en="Run policy check">정책 판정 실행</button></div>
+    <p class="decision-desc" id="demoDescription" aria-live="polite">시나리오를 선택하고 정책 판정을 실행하세요.</p>
+    <div id="demoReview" hidden style="gap:8px;margin-top:10px"><button type="button" data-demo-approve class="run-case" data-ko="승인 · 모의 실행" data-en="Approve · MOCK">승인 · 모의 실행</button><button type="button" data-demo-deny class="run-case" data-ko="거부" data-en="Deny" style="background:#7c4b47">거부</button></div>
    </div>
   </div>
  </div>
