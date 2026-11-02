@@ -171,6 +171,17 @@ const lab = fs.readFileSync(path.join(site, "lab.html"), "utf8");
 if (!lab.includes("img-src 'self' data:")) throw new Error("Lab CSP must permit its same-origin brand icon.");
 if (!lab.includes('href="./index.html"')) throw new Error("Lab is missing a return link to the corporate website.");
 const localConsole = fs.readFileSync(path.join(site, "local-console.html"), "utf8");
+const contributionGuide = fs.readFileSync(path.join(root, "CONTRIBUTING.md"), "utf8");
+const pullRequestTemplate = fs.readFileSync(path.join(root, ".github", "PULL_REQUEST_TEMPLATE.md"), "utf8");
+for (const command of ["python -m unittest discover -s tests -v", "node tests/check_studio_console.js", "node tests/check_corporate_site.js"]) {
+  if (!contributionGuide.includes(command) || !pullRequestTemplate.includes(command)) {
+    throw new Error("Contribution docs must include the required check: " + command);
+  }
+}
+if (!pullRequestTemplate.includes("No credentials, tokens") || !pullRequestTemplate.includes("actual tool boundary")) {
+  throw new Error("Pull request template is missing security scope checks.");
+}
+if (!developerDocs.includes("CONTRIBUTING.md")) throw new Error("Developer Docs must link the contribution guide.");
 const issueTemplates = path.join(root, ".github", "ISSUE_TEMPLATE");
 for (const template of ["bug_report.yml", "research_proposal.yml", "config.yml"]) {
   if (!fs.existsSync(path.join(issueTemplates, template))) throw new Error("Missing GitHub issue template: " + template);
