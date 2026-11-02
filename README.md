@@ -179,11 +179,11 @@ $env:OPENAI_API_KEY = '<your development key>'
 python examples/openai_agents_sdk_custos.py
 ~~~
 
-The current gateway uses `MockExecutionAdapter`: the research read and any approved email action are simulated. No real database or email system is connected. The SDK tool-call ID is converted into a stable Custos request ID for idempotent retries of the same SDK call.
+The integration test starts `custos_provider.py` as a separate process and configures the gateway to forward signed dispatch permits through `HttpToolProviderAdapter`. The Provider verifies the permit and persists an execution receipt in its own SQLite ledger. The Provider still uses `MockExecutionAdapter`: the research read and any approved email action are simulated. No real database or email system is connected. This is a separate local process, not an OS sandbox or container isolation boundary. The SDK tool-call ID is converted into a stable Custos request ID for idempotent retries of the same SDK call.
 
 **Enforcement boundary:** `create_custos_agent()` configures only the three Custos function tools. Do not append raw Python functions, hosted tools, MCP servers, shell/computer tools, handoffs, or other execution surfaces and assume this adapter mediates them. Those surfaces require their own Custos-side gateway or server-side enforcement. This integration demonstrates one framework path; it does not prove that every possible Agent action in a process is mediated.
 
-CI installs the pinned optional dependency and invokes the Agents SDK `FunctionTool` runtime against a local Custos test server. These contract tests do not call an OpenAI model or require an API key.
+CI installs the pinned optional dependency and invokes the Agents SDK `FunctionTool` runtime against a local Custos API plus a separate mock Provider process. The integration tests inspect the Provider's independent execution-receipt ledger. These contract tests do not call an OpenAI model or require an API key.
 
 ## Contributing\n\nSee [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, engineering expectations, required tests, and security rules. Pull requests use a structured checklist in `.github/PULL_REQUEST_TEMPLATE.md`.\n\n## Feedback and collaboration\n\nGitHub Issues includes structured templates for reproducible bug reports and research/collaboration proposals. Public issues should never include secrets, customer data, or confidential details.\n\n## Automated checks and deployment
 
