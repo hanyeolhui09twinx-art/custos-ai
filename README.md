@@ -1,9 +1,11 @@
 # Custos AI
 
-**Independent control for autonomous AI.**  
-**Never trust. Always verify.**
+**Preserving Humanity's Agency.**  
+**Perfect control is not the assumption. Human agency is the objective.**
 
-Custos is an early-stage research project exploring an independent authorization layer between autonomous AI agents and the tools they can invoke. Its central design principle is to separate an agent's ability to act from its authority to act.
+Custos is an independent technology venture in formation researching technical and institutional architectures that seek to maximize the time, probability, and recoverability of humanity's meaningful authority around increasingly autonomous AI. It does not assume that AI can be controlled perfectly. Its technical research separates an agent's ability to act from its authority to act, while its broader objective is to preserve human understanding, intervention, containment, and recovery options when safeguards fail.
+
+Product sales are not the mission. Custos intends to develop independent technology and intellectual property, and to work with enterprises and public institutions through negotiated B2B and B2G research, licensing, integration, evaluation, and continuing technical agreements.
 
 ## Public website
 
@@ -13,13 +15,16 @@ The public site includes dedicated pages:
 
 | Page | Purpose |
 |---|---|
-| Home | Project overview and interactive policy concept demo |
+| Home | Mission-led company overview and interactive policy concept demo |
+| Mission | Human agency preservation, intervention time, probability, containment, and recovery objectives |
 | Platform | Request validation, policy decisions, human approval, and audit flow |
 | Technology | Technical architecture and implementation status |
 | Security & Trust | Implemented controls, limitations, and five-lens threat model |
 | Research | Research questions, roadmap, and engineering records |
-| About | Project mission and current status |
-| Contact | GitHub-based technical feedback and collaboration |
+| Company | Founder-led venture direction, independence, and current status |
+| Institutional Partnerships | Intended B2B/B2G contract models, responsibilities, and IP boundaries |
+| Media Room | Brand-film motion preview, company profile, partnership brief, and film script |
+| Contact | Structured technical feedback, research proposals, and institutional collaboration |
 | Privacy | Data handling for the static site and browser tools |
 | Terms of Use | Usage boundaries for the research website and prototype tools |
 | Updates | Engineering milestones, test status, and next development gates |
@@ -154,6 +159,7 @@ GitHub Actions runs:
 - JavaScript syntax and browser-console security-wiring checks.
 - Corporate website route, canonical URL, sitemap, local-link, bilingual navigation, accessibility, contrast, issue-template, and threat-model checks.
 - Deterministic Node-based UI behavior checks for policy decisions, approval/denial, language switching, and keyboard navigation.
+- Chromium browser checks for desktop/mobile routes, local links, language switching, keyboard navigation, media preview, and reduced-motion behavior.
 - GitHub Pages deployment when files under `simulation-studio/` change.
 
 ## Security and implementation limits
@@ -194,3 +200,4 @@ Custos should currently be described as a local research prototype with a mock e
 - [Day 013 — Dispatch key-ring rotation](devlog/day-013.md)
 - [Day 014 — Key compromise response and lifecycle audit](devlog/day-014.md)
 - [Day 015 — Read-only Security Operations](devlog/day-015.md)
+- [Day 016 — Human Agency Preservation corporate platform](devlog/day-016.md)
