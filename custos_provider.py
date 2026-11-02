@@ -14,7 +14,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 from urllib.request import Request, urlopen
 
 from custos_gateway import (
@@ -24,6 +24,20 @@ from custos_gateway import (
 
 MAX_BODY_BYTES = 65_536
 PROVIDER_PATH = "/v1/dispatch"
+RECEIPT_SIGNATURE_HEADER = "X-Custos-Receipt-Signature"
+
+
+def receipt_lookup_signature(signing_key: bytes, request_path: str) -> str:
+    """Sign a GET receipt path with a domain-separated key derived from the dispatch key."""
+    if not isinstance(signing_key, bytes) or len(signing_key) < 32:
+        raise ValueError("Receipt lookup signing key must be at least 32 bytes.")
+    if not isinstance(request_path, str) or not request_path.startswith("/v1/receipts/") or "?" in request_path:
+        raise ValueError("Receipt lookup path is invalid.")
+    receipt_key = hmac.new(
+        signing_key, b"custos-ai/provider-receipt-lookup/v1", hashlib.sha256
+    ).digest()
+    message = b"GET\\n" + request_path.encode("utf-8")
+    return hmac.new(receipt_key, message, hashlib.sha256).hexdigest()
 
 
 class DurableDispatchPermitVerifier:
@@ -54,6 +68,15 @@ class DurableDispatchPermitVerifier:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=FULL")
         return conn
+
+    def verify_receipt_lookup(self, request_path: str, signature: str) -> bool:
+        if not isinstance(signature, str) or not re.fullmatch(r"[0-9a-f]{64}", signature):
+            return False
+        try:
+            expected = receipt_lookup_signature(self._key, request_path)
+        except (TypeError, ValueError, UnicodeEncodeError):
+            return False
+        return hmac.compare_digest(expected, signature)
 
     def consume(self, request: ActionRequest, data: Any) -> DispatchPermit:
         fields = set(DispatchPermit.__dataclass_fields__)
@@ -238,6 +261,9 @@ class ToolProviderService:
     def get_receipt(self, agent_id: str, request_id: str) -> dict[str, Any] | None:
         return self.receipts.get(agent_id, request_id)
 
+    def verify_receipt_lookup(self, request_path: str, signature: str) -> bool:
+        return self.verifier.verify_receipt_lookup(request_path, signature)
+
     def dispatch(self, payload: Any) -> dict[str, Any]:
         if not isinstance(payload, dict) or set(payload) != {"request", "permit"}:
             raise DispatchAuthorizationError("Only a request with a signed permit is accepted.")
@@ -287,7 +313,17 @@ class ToolProviderHTTPServer(ThreadingHTTPServer):
                     return
                 parts = path.split("/")
                 if len(parts) == 5 and parts[1:3] == ["v1", "receipts"]:
-                    agent_id, request_id = parts[3], parts[4]
+                    if urlsplit(self.path).query:
+                        self._send(400, {"error": "Receipt lookup does not accept query parameters."})
+                        return
+                    signature = self.headers.get(RECEIPT_SIGNATURE_HEADER, "")
+                    if not signature:
+                        self._send(401, {"error": "Receipt lookup authentication is required."})
+                        return
+                    if not self.server.service.verify_receipt_lookup(path, signature):  # type: ignore[attr-defined]
+                        self._send(403, {"error": "Receipt lookup authentication failed."})
+                        return
+                    agent_id, request_id = unquote(parts[3]), unquote(parts[4])
                     if not IDENTIFIER_RE.fullmatch(agent_id) or not REQUEST_ID_RE.fullmatch(request_id):
                         self._send(400, {"error": "Invalid receipt identifier."})
                         return
@@ -347,7 +383,16 @@ def create_provider_server(
 class HttpToolProviderAdapter:
     """Gateway-side client that forwards a permit, never a raw tool client or credential."""
 
-    def __init__(self, endpoint: str, timeout_seconds: float = 3.0) -> None:
+    def __init__(
+        self,
+        endpoint: str,
+        timeout_seconds: float = 3.0,
+        receipt_signing_key: bytes | None = None,
+    ) -> None:
+        if receipt_signing_key is not None and (
+            not isinstance(receipt_signing_key, bytes) or len(receipt_signing_key) < 32
+        ):
+            raise ValueError("Receipt signing key must be at least 32 bytes.")
         parsed = urlsplit(endpoint)
         if (parsed.scheme != "http" or parsed.hostname != "127.0.0.1"
                 or parsed.username is not None or parsed.password is not None
@@ -358,6 +403,7 @@ class HttpToolProviderAdapter:
             raise ValueError("Provider timeout must be finite and positive.")
         self.endpoint = endpoint
         self.timeout_seconds = float(timeout_seconds)
+        self.receipt_signing_key = receipt_signing_key
 
     def execute(self, request: ActionRequest) -> dict[str, Any]:
         raise DispatchAuthorizationError("The provider requires a gateway-issued permit.")
@@ -396,9 +442,22 @@ class HttpToolProviderAdapter:
         return result["result"]
 
     def get_receipt(self, agent_id: str, request_id: str) -> dict[str, Any] | None:
-        url = self.endpoint.rsplit(PROVIDER_PATH, 1)[0] + "/v1/receipts/" + quote(agent_id, safe="") + "/" + quote(request_id, safe="")
+        if self.receipt_signing_key is None:
+            raise RuntimeError("Authenticated provider receipt lookup requires the dispatch signing key.")
+        if not isinstance(agent_id, str) or not IDENTIFIER_RE.fullmatch(agent_id):
+            raise ValueError("Receipt Agent ID is invalid.")
+        if not isinstance(request_id, str) or not REQUEST_ID_RE.fullmatch(request_id):
+            raise ValueError("Receipt request ID is invalid.")
+        path = "/v1/receipts/" + quote(agent_id, safe="") + "/" + quote(request_id, safe="")
+        url = self.endpoint.rsplit(PROVIDER_PATH, 1)[0] + path
+        signature = receipt_lookup_signature(self.receipt_signing_key, path)
+        outbound = Request(
+            url,
+            method="GET",
+            headers={RECEIPT_SIGNATURE_HEADER: signature, "Accept": "application/json"},
+        )
         try:
-            with urlopen(url, timeout=self.timeout_seconds) as response:
+            with urlopen(outbound, timeout=self.timeout_seconds) as response:
                 payload = json.loads(response.read(MAX_BODY_BYTES + 1).decode("utf-8"))
         except HTTPError as exc:
             if exc.code == 404:
