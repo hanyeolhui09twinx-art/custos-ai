@@ -644,7 +644,8 @@ class APITestCase(unittest.TestCase):
             token=self.REVIEWER_TOKEN,
         )
         self.assertEqual(status, 200)
-        self.assertEqual(list(payload["components"]), ["provider"])
+        self.assertEqual(set(payload["components"]), {"gateway", "provider"})
+        self.assertEqual(payload["events"][0]["component"], "provider")
         self.assertEqual(len(payload["events"]), 1)
         self.assertEqual(payload["events"][0]["event"], "DISPATCH_KEYRING_INITIALIZED")
         self.assertEqual(payload["filters"]["limit"], 1)
