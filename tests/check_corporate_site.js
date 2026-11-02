@@ -174,7 +174,7 @@ if (!home.includes('href="./developers.html"') || !home.includes("Developer quic
   throw new Error("Platform page must show its prototype status and decision-card UI.");
 }
 const technology = fs.readFileSync(path.join(site, "technology.html"), "utf8");
-for (const phrase of ["DISPATCH PERMIT / RE-CHECK", "MOCK TOOL PROVIDER + RECEIPT LEDGER", "Dispatch permit boundary", "15-second HMAC request-bound permit", "Exact tool binding", "explicitly registered Action/Resource pairs", "durable SQLite nonce ledger", "Provider process boundary", "MOCK TOOL PROVIDER + RECEIPT LEDGER", "Execution receipt ledger", "Gateway restart recovery", "completed results are cached", "indeterminate", "not an OS sandbox", "HMAC-authenticated receipt reads", "Manual key rotation", "key_id", "overlapping old/new keys", "Production execution adapter"]) {
+for (const phrase of ["DISPATCH PERMIT / RE-CHECK", "MOCK TOOL PROVIDER + RECEIPT LEDGER", "Dispatch permit boundary", "15-second request-bound HMAC permit with key_id", "Exact tool binding", "explicitly registered Action/Resource pairs", "durable SQLite nonce ledger", "Provider process boundary", "MOCK TOOL PROVIDER + RECEIPT LEDGER", "Execution receipt ledger", "Gateway restart recovery", "completed results are cached", "indeterminate", "not an OS sandbox", "HMAC-authenticated receipt reads", "Manual key rotation", "key_id", "overlapping old/new keys", "Production execution adapter"]) {
   if (!technology.includes(phrase)) throw new Error("Technology page is missing the guarded adapter boundary description: " + phrase);
 }
 const threatModel = fs.readFileSync(path.join(root, "docs", "THREAT_MODEL.md"), "utf8");
