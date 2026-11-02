@@ -7,7 +7,7 @@ Custos is an early-stage research project exploring an independent authorization
 
 ## Public website
 
-**[Open the Custos AI corporate website](https://hanyeolhui09twinx-art.github.io/custos-ai/)** · [Updates](https://hanyeolhui09twinx-art.github.io/custos-ai/updates.html)
+**[Open the Custos AI corporate website](https://hanyeolhui09twinx-art.github.io/custos-ai/)** · [Developer Docs](https://hanyeolhui09twinx-art.github.io/custos-ai/developers.html) · [Updates](https://hanyeolhui09twinx-art.github.io/custos-ai/updates.html)
 
 The public site includes dedicated pages:
 
@@ -23,6 +23,7 @@ The public site includes dedicated pages:
 | Privacy | Data handling for the static site and browser tools |
 | Terms of Use | Usage boundaries for the research website and prototype tools |
 | Updates | Engineering milestones, test status, and next development gates |
+| Developer Docs | Local API setup, request schema, routes, and security boundaries |
 | Simulation Lab | Preserved bilingual browser simulation |
 | Local Control Room | Browser console for a locally running Python API |
 
