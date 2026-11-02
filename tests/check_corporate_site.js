@@ -151,6 +151,12 @@ for (const route of ["/health", "/v1/requests", "/v1/approvals", "/v1/approvals/
 if (!openApi.servers.some(server => server.url === "http://127.0.0.1:8765")) {
   throw new Error("OpenAPI contract must describe the local loopback server.");
 }
+if (!openApi.info.description.includes("https://hanyeolhui09twinx-art.github.io")) {
+  throw new Error("OpenAPI contract must document the strict browser CORS origin allowlist.");
+}
+if (!developerDocs.includes("other browser origins") && !developerDocs.includes("다른 도메인")) {
+  throw new Error("Developer Docs must disclose the browser CORS origin limitation.");
+}
 if (!openApi.components.securitySchemes.AgentBearer || !openApi.components.securitySchemes.ReviewerBearer) {
   throw new Error("OpenAPI contract must distinguish Agent and Reviewer credentials.");
 }
