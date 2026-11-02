@@ -227,7 +227,10 @@ for (const phrase of ["subprocess.Popen", "test_provider_permit_is_single_use_un
   if (!providerTests.includes(phrase)) throw new Error("Separate-process integration test is missing: " + phrase);
 }
 const gatewaySource = fs.readFileSync(path.join(root, "custos_gateway.py"), "utf8");
-for (const status of ["pending", "approved", "denied", "expired", "executing", "executed", "blocked", "failed"]) {
+for (const phrase of ["recover_interrupted_requests", "GATEWAY_RECOVERED_INCOMPLETE_REQUESTS", "get_for_request", "EXECUTION_UNKNOWN", "status='indeterminate'"]) {
+  if (!gatewaySource.includes(phrase)) throw new Error("Gateway restart recovery control is missing: " + phrase);
+}
+for (const status of ["pending", "approved", "denied", "expired", "executing", "executed", "blocked", "failed", "indeterminate"]) {
   if (!gatewaySource.includes("'" + status + "'") && !gatewaySource.includes('"' + status + '"')) {
     throw new Error("Approval state is missing from gateway implementation: " + status);
   }
