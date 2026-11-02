@@ -14,6 +14,7 @@ from typing import Any, Callable, Protocol
 from audit_log import AuditLog
 
 IDENTIFIER_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_.:-]{0,127}$")
+REQUEST_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$")
 MAX_PARAMETERS_BYTES = 16_384
 
 
@@ -80,7 +81,8 @@ class ActionRequest:
         request_id = payload.get("request_id") or str(uuid.uuid4())
 
         for label, value in (("action", action), ("resource", resource), ("request_id", request_id)):
-            if not isinstance(value, str) or not IDENTIFIER_RE.fullmatch(value):
+            validator = REQUEST_ID_RE if label == "request_id" else IDENTIFIER_RE
+            if not isinstance(value, str) or not validator.fullmatch(value):
                 raise ValueError(f"{label} must be a valid identifier.")
 
         if not isinstance(parameters, dict):
