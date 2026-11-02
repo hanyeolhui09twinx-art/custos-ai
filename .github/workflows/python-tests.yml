@@ -28,8 +28,16 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
       - name: Compile Python sources
         run: python -m compileall -q .
 
-      - name: Run automated tests
+      - name: Run automated Python tests
         run: python -m unittest discover -s tests -v
+
+      - name: Check browser console script and security wiring
+        run: node tests/check_studio_console.js
