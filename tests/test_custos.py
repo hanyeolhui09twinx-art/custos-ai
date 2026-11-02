@@ -165,6 +165,14 @@ class GatewayTestCase(unittest.TestCase):
                 "research_agent",
                 {"action": "read_database", "resource": "research_db", "parameters": {"blob": "x" * 20_000}},
             )
+        nested = 0
+        for _ in range(1_100):
+            nested = [nested]
+        with self.assertRaises(ValueError):
+            ActionRequest.from_payload(
+                "research_agent",
+                {"action": "read_database", "resource": "research_db", "parameters": {"nested": nested}},
+            )
 
     def test_repeated_request_id_returns_cached_result_without_second_execution(self) -> None:
         request = ActionRequest.from_payload(
@@ -349,6 +357,27 @@ class APITestCase(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as error:
             urllib.request.urlopen(denied, timeout=3)
         self.assertEqual(error.exception.code, 403)
+
+    def test_deeply_nested_json_returns_bad_request_not_server_error(self) -> None:
+        raw = (
+            '{"action":"read_database","resource":"research_db","parameters":{"nested":'
+            + ("[" * 1_100)
+            + "0"
+            + ("]" * 1_100)
+            + "}}"
+        ).encode("utf-8")
+        request = urllib.request.Request(
+            self.base_url + "/v1/requests",
+            data=raw,
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": "Bearer " + self.AGENT_TOKEN,
+            },
+        )
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(request, timeout=3)
+        self.assertEqual(error.exception.code, 400)
 
     def test_health_and_authentication(self) -> None:
         status, payload = self.request("GET", "/health")
