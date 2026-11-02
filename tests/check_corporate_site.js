@@ -298,7 +298,7 @@ if (!lab.includes('href="./index.html"')) throw new Error("Lab is missing a retu
 const localConsole = fs.readFileSync(path.join(site, "local-console.html"), "utf8");
 const contributionGuide = fs.readFileSync(path.join(root, "CONTRIBUTING.md"), "utf8");
 const pullRequestTemplate = fs.readFileSync(path.join(root, ".github", "PULL_REQUEST_TEMPLATE.md"), "utf8");
-for (const command of ["python -m unittest discover -s tests -v", "node tests/check_studio_console.js", "node tests/check_corporate_site.js"]) {
+for (const command of ["python -m unittest discover -s tests -v", "node tests/check_studio_console.js", "node tests/check_simulation_lab.js", "node tests/check_corporate_site.js"]) {
   if (!contributionGuide.includes(command) || !pullRequestTemplate.includes(command)) {
     throw new Error("Contribution docs must include the required check: " + command);
   }
