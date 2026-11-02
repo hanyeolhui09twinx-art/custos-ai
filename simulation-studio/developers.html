@@ -63,9 +63,43 @@ python custos_api.py</code></pre></div>
   "request_id": "docs-read-001"
 }</code></pre></div>
 <p class="form-note" style="margin-top:12px" data-ko="request_id는 선택 사항이지만, 동일 작업의 재시도에는 같은 ID를 사용해야 중복 실행을 피할 수 있습니다. 같은 ID에 다른 페이로드를 넣으면 충돌로 거부됩니다. 매개변수는 JSON 객체여야 하며 민감정보 필드와 크기 제한이 적용됩니다." data-en="request_id is optional, but reuse the same ID when retrying the same logical operation to avoid duplicate execution. Reusing an ID with a different payload is rejected as a conflict. Parameters must be a JSON object and are subject to sensitive-field and size checks.">request_id는 선택 사항이지만, 동일 작업의 재시도에는 같은 ID를 사용해야 중복 실행을 피할 수 있습니다. 같은 ID에 다른 페이로드를 넣으면 충돌로 거부됩니다. 매개변수는 JSON 객체여야 하며 민감정보 필드와 크기 제한이 적용됩니다.</p>
+<div class="code-panel"><div class="code-head"><span>POWERSHELL / HTTP REQUEST</span><span>03 — SUBMIT AN ACTION</span></div><pre><code>$payload = @{
+  action = "read_database"
+  resource = "research_db"
+  parameters = @{}
+  request_id = "docs-read-001"
+} | ConvertTo-Json -Depth 10
+
+Invoke-RestMethod -Method Post `
+  -Uri "http://127.0.0.1:8765/v1/requests" `
+  -Headers @{ Authorization = "Bearer $agentToken" } `
+  -ContentType "application/json" `
+  -Body $payload</code></pre></div>
+<div class="doc-note"><strong data-ko="Agent ID는 토큰에서 파생됩니다." data-en="Agent identity is derived from the token.">Agent ID는 토큰에서 파생됩니다.</strong><p data-ko="요청 본문에 agent_id를 보내지 않습니다. 서버가 Bearer 토큰을 설정된 Agent ID에 매핑합니다." data-en="Do not send agent_id in the request body. The server maps the Bearer token to the configured Agent ID.">요청 본문에 agent_id를 보내지 않습니다. 서버가 Bearer 토큰을 설정된 Agent ID에 매핑합니다.</p></div>
 </div></section>
 <section class="section" style="background:#e8ede8"><div class="container">
 <div class="section-head"><div class="eyebrow">04 / API ROUTES</div><div><h2 data-ko="API 엔드포인트" data-en="API endpoints">API 엔드포인트</h2><p data-ko="GET /health를 제외한 엔드포인트는 Bearer 인증이 필요합니다. Agent 토큰은 요청 제출 및 본인 승인 요청 실행에 사용하고, Reviewer 토큰은 승인 목록 조회와 검토에 사용합니다." data-en="All endpoints except GET /health require Bearer authentication. Agent tokens submit requests and execute the originating agent's approved request; Reviewer tokens list and review pending approvals.">GET /health를 제외한 엔드포인트는 Bearer 인증이 필요합니다. Agent 토큰은 요청 제출 및 본인 승인 요청 실행에 사용하고, Reviewer 토큰은 승인 목록 조회와 검토에 사용합니다.</p></div></div>
+<div class="code-panel"><div class="code-head"><span>POWERSHELL / HUMAN APPROVAL</span><span>04 — REVIEW AND EXECUTE</span></div><pre><code># List pending approvals (Reviewer token)
+$pending = Invoke-RestMethod -Method Get `
+  -Uri "http://127.0.0.1:8765/v1/approvals" `
+  -Headers @{ Authorization = "Bearer $reviewerToken" }
+
+# Set this to an approval_id from the pending response
+$approvalId = "PASTE_APPROVAL_ID_HERE"
+
+# Approve the exact request (Reviewer token)
+$reviewBody = @{ decision = "approve" } | ConvertTo-Json
+Invoke-RestMethod -Method Post `
+  -Uri "http://127.0.0.1:8765/v1/approvals/$approvalId/review" `
+  -Headers @{ Authorization = "Bearer $reviewerToken" } `
+  -ContentType "application/json" `
+  -Body $reviewBody
+
+# Execute once as the original requesting Agent
+Invoke-RestMethod -Method Post `
+  -Uri "http://127.0.0.1:8765/v1/approvals/$approvalId/execute" `
+  -Headers @{ Authorization = "Bearer $agentToken" }</code></pre></div>
+<p class="form-note" data-ko="승인 단계는 요청 스냅샷과 연결됩니다. Reviewer는 승인 또는 거부할 수 있으며, 실행은 원래 요청한 Agent 토큰으로 한 번만 시도할 수 있습니다. 실제 실행 결과는 mock adapter의 시뮬레이션 응답입니다." data-en="The approval is bound to the request snapshot. A reviewer can approve or deny it, and execution can be attempted once using the original requesting Agent token. The execution result is a simulation response from the mock adapter.">승인 단계는 요청 스냅샷과 연결됩니다. Reviewer는 승인 또는 거부할 수 있으며, 실행은 원래 요청한 Agent 토큰으로 한 번만 시도할 수 있습니다. 실제 실행 결과는 mock adapter의 시뮬레이션 응답입니다.</p>
 <div class="table-wrap"><table><thead><tr><th>METHOD</th><th>PATH</th><th>AUTH</th><th>DESCRIPTION</th></tr></thead><tbody>
 <tr><td>GET</td><td><code>/health</code></td><td>None</td><td data-ko="로컬 서버 상태" data-en="Local service health">로컬 서버 상태</td></tr>
 <tr><td>POST</td><td><code>/v1/requests</code></td><td>Agent</td><td data-ko="정책 요청 제출" data-en="Submit an action request">정책 요청 제출</td></tr>
