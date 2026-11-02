@@ -379,6 +379,9 @@ class GuardedExecutionAdapter:
                 raise DispatchAuthorizationError("Current policy blocks this previously approved dispatch.")
             if not self._approval_claim_verifier(permit.approval_id or "", request):
                 raise DispatchAuthorizationError("The approval is not in a valid, request-bound execution state.")
+        permitted_dispatch = getattr(self._delegate, "execute_with_permit", None)
+        if callable(permitted_dispatch):
+            return permitted_dispatch(request, permit)
         return self._delegate.execute(request)
 
 
@@ -687,6 +690,7 @@ class CustosGateway:
         policy_engine: PolicyEngine | None = None,
         approval_ttl_seconds: int = 300,
         clock: Callable[[], float] = time.time,
+        dispatch_signing_key: bytes | None = None,
     ) -> None:
         if approval_ttl_seconds < 1:
             raise ValueError("approval_ttl_seconds must be positive.")
@@ -695,7 +699,11 @@ class CustosGateway:
         self.policy_engine = policy_engine or PolicyEngine()
         self.clock = clock
         self.approval_ttl_seconds = approval_ttl_seconds
-        self._dispatch_authority = DispatchAuthority(clock=clock, ttl_seconds=15.0)
+        self._dispatch_authority = DispatchAuthority(
+            clock=clock,
+            ttl_seconds=15.0,
+            signing_key=dispatch_signing_key,
+        )
         self.adapter = GuardedExecutionAdapter(
             delegate=adapter or MockExecutionAdapter(),
             policy_engine=self.policy_engine,
