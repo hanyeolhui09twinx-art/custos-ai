@@ -212,6 +212,9 @@ for (const log of ["day-001.md", "day-002.md", "day-003.md", "day-004.md", "day-
 }
 
 const apiSource = fs.readFileSync(path.join(root, "custos_api.py"), "utf8");
+if (!apiSource.includes("receipt_signing_key=dispatch_signing_key")) {
+  throw new Error("Gateway API must pass the dispatch key to authenticated provider receipt lookups.");
+}
 for (const fragment of ['path == "/health"', 'path == "/v1/requests"', 'path == "/v1/approvals"', 'operation == "review"', 'operation == "execute"']) {
   if (!apiSource.includes(fragment)) throw new Error("API implementation route is missing: " + fragment);
 }
@@ -219,11 +222,11 @@ if (!apiSource.includes('origin != "https://hanyeolhui09twinx-art.github.io"')) 
   throw new Error("API implementation must enforce the documented browser Origin allowlist.");
 }
 const providerSource = fs.readFileSync(path.join(root, "custos_provider.py"), "utf8");
-for (const phrase of ["DurableDispatchPermitVerifier", "BEGIN IMMEDIATE", "consumed_permits", "ExecutionReceiptStore", "execution_receipts", "recover_interrupted", "execute_with_permit", "get_receipt", "execution_outcome_unknown", "PROVIDER_PATH"]) {
+for (const phrase of ["DurableDispatchPermitVerifier", "BEGIN IMMEDIATE", "consumed_permits", "ExecutionReceiptStore", "execution_receipts", "recover_interrupted", "execute_with_permit", "get_receipt", "execution_outcome_unknown", "RECEIPT_SIGNATURE_HEADER", "receipt_lookup_signature", "verify_receipt_lookup", "PROVIDER_PATH"]) {
   if (!providerSource.includes(phrase)) throw new Error("Provider process is missing a required verification control: " + phrase);
 }
 const providerTests = fs.readFileSync(path.join(root, "tests", "test_provider_process.py"), "utf8");
-for (const phrase of ["subprocess.Popen", "test_provider_permit_is_single_use_under_concurrent_replay", "test_provider_replay_record_survives_process_restart", "test_human_approved_dispatch_uses_the_separate_provider", "test_gateway_fails_closed_when_provider_is_unavailable", "test_same_request_id_returns_persisted_result_without_second_execution", "test_same_request_id_with_different_digest_is_rejected", "test_interrupted_execution_becomes_indeterminate_after_restart", "test_gateway_reconciles_a_lost_response_from_provider_receipt", "test_approved_gateway_reconciles_a_lost_provider_response", "test_gateway_restart_reconciles_provider_completion_before_request_receipt_commit", "test_gateway_restart_without_provider_receipt_stays_unknown_and_never_redispatches", "test_gateway_restart_recovers_existing_pending_approval_without_duplicate", "test_approved_execution_restart_reconciles_provider_receipt"]) {
+for (const phrase of ["subprocess.Popen", "test_provider_permit_is_single_use_under_concurrent_replay", "test_provider_replay_record_survives_process_restart", "test_human_approved_dispatch_uses_the_separate_provider", "test_gateway_fails_closed_when_provider_is_unavailable", "test_same_request_id_returns_persisted_result_without_second_execution", "test_same_request_id_with_different_digest_is_rejected", "test_interrupted_execution_becomes_indeterminate_after_restart", "test_gateway_reconciles_a_lost_response_from_provider_receipt", "test_approved_gateway_reconciles_a_lost_provider_response", "test_gateway_restart_reconciles_provider_completion_before_request_receipt_commit", "test_gateway_restart_without_provider_receipt_stays_unknown_and_never_redispatches", "test_gateway_restart_recovers_existing_pending_approval_without_duplicate", "test_approved_execution_restart_reconciles_provider_receipt", "test_provider_receipt_lookup_requires_a_valid_hmac_signature"]) {
   if (!providerTests.includes(phrase)) throw new Error("Separate-process integration test is missing: " + phrase);
 }
 const gatewaySource = fs.readFileSync(path.join(root, "custos_gateway.py"), "utf8");
