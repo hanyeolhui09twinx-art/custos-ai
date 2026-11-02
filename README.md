@@ -127,3 +127,10 @@ This is **not a production security product**:
 Read [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) for the full `/ASSUMPTIONS`, `/BLINDSPOT`, `/COUNTER`, `/EDGECASE`, and `/SELFCRITIQUE` review.
 
 Custos should currently be described as a local research prototype with a mock execution adapter, not a production enforcement layer.
+
+
+## Development logs
+
+- [Day 001](devlog/day-001.md)
+- [Day 002](devlog/day-002.md)
+- [Day 003 — Corporate website and public interface](devlog/day-003.md)
