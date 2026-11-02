@@ -138,12 +138,17 @@ function setLanguage(next){
  $("ko").classList.toggle("active",next==="ko");$("en").classList.toggle("active",next==="en");
 }
 function setResult(el,value){el.textContent=typeof value==="string"?value:JSON.stringify(value,null,2)}
+ function setRequestLocked(locked){
+  ["action","resource","requestId","params","newId"].forEach(id=>{$(id).disabled=locked});
+ }
  function setOutcome(el,result){
   if(result&&result.decision==="EXECUTION_UNKNOWN"){
    el.classList.add("uncertain");
+   setRequestLocked(true);
    setResult(el,{notice:text[language].executionUnknown,response:result});
   }else{
    el.classList.remove("uncertain");
+   setRequestLocked(false);
    setResult(el,result);
   }
  }
@@ -207,10 +212,7 @@ $("submitBtn").addEventListener("click",async()=>{
   const result=await api("/v1/requests","POST",body,token);
   setOutcome($("requestResult"),result);
   if(result.replayed) $("requestResult").textContent+="\n\n"+text[language].replayed;
-  if(result.decision==="EXECUTION_UNKNOWN"){
-   $("newId").disabled=true;
-  }else{
-   $("newId").disabled=false;
+  if(result.decision!=="EXECUTION_UNKNOWN"){
    if(result.approval_id)$("selectedApproval").value=result.approval_id;
    else if(result.decision==="ALLOW") $("requestId").value=freshId();
   }
@@ -253,14 +255,9 @@ $("executeBtn").addEventListener("click",async()=>{
   if(!id)throw new Error(text[language].selectApproval);
   const result=await api("/v1/approvals/"+encodeURIComponent(id)+"/execute","POST",{},token);
   setOutcome($("approvalResult"),result);
-  if(result.decision==="EXECUTION_UNKNOWN"){
-   $("newId").disabled=true;
-  }else{
-   $("newId").disabled=false;
-   if(result.executed){
-    setResult($("approvalResult"),{notice:text[language].executeSuccess,result:result});
-    $("requestId").value=freshId();
-   }
+  if(result.decision!=="EXECUTION_UNKNOWN"&&result.executed){
+   setResult($("approvalResult"),{notice:text[language].executeSuccess,result:result});
+   $("requestId").value=freshId();
   }
   await refreshApprovals();
  }catch(e){setResult($("approvalResult"),e.message)}
