@@ -237,6 +237,7 @@ class OpenAIAgentsSDKIntegrationTests(unittest.TestCase):
         self.assertEqual(receipt[0]["result"]["action"], "read_database")
         self.assertEqual(receipt[0]["result"]["status"], "read_only")
         self.assertEqual(receipt[0]["result"]["row_count"], 1)
+        self.assertEqual(receipt[0]["result"]["contract_version"], "1.0.0")
 
     def test_email_action_cannot_execute_without_separate_human_approval(self) -> None:
         pending = self.invoke(

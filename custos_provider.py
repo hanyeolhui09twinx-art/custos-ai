@@ -9,7 +9,7 @@ import os
 import re
 import sqlite3
 import time
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
@@ -308,44 +308,153 @@ class ExecutionReceiptStore:
         return result
 
 
+@dataclass(frozen=True)
+class ProviderToolContract:
+    """Versioned input/output contract owned and enforced by the Provider."""
+
+    version: str
+    required_mode: str
+    input_kind: str
+    parameter_fields: frozenset[str]
+    result_status: str
+
+    def validate_parameters(self, parameters: Any, research_fixture: "ReadOnlyResearchFixture") -> None:
+        if not isinstance(parameters, dict) or set(parameters) != set(self.parameter_fields):
+            raise ValueError("Provider tool parameters do not match the registered contract schema.")
+
+        if self.input_kind == "research_query_v1":
+            research_fixture.validate_parameters(parameters)
+            return
+
+        if self.input_kind == "email_request_v1":
+            recipient = parameters.get("recipient")
+            subject = parameters.get("subject")
+            body = parameters.get("body")
+            if (
+                not isinstance(recipient, str)
+                or not recipient
+                or len(recipient) > 320
+                or "\r" in recipient
+                or "\n" in recipient
+                or not re.fullmatch(r"[^@\\s]+@[^@\\s]+", recipient)
+            ):
+                raise ValueError("Email contract recipient must be a bounded address.")
+            if not isinstance(subject, str) or not subject.strip() or len(subject) > 200:
+                raise ValueError("Email contract subject must contain 1 to 200 characters.")
+            if not isinstance(body, str) or not body.strip() or len(body) > 8000:
+                raise ValueError("Email contract body must contain 1 to 8000 characters.")
+            return
+
+        raise ValueError("Provider tool contract input kind is not supported.")
+
+    def validate_result(self, request: ActionRequest, result: Any) -> dict[str, Any]:
+        if not isinstance(result, dict):
+            raise TypeError("Provider tool result must be a JSON object.")
+        common = {
+            "agent_id": request.agent_id,
+            "action": request.action,
+            "resource": request.resource,
+            "request_id": request.request_id,
+            "contract_version": self.version,
+            "status": self.result_status,
+        }
+        for key, expected in common.items():
+            if result.get(key) != expected:
+                raise TypeError("Provider tool result does not match its registered contract.")
+
+        if self.input_kind == "research_query_v1":
+            expected_fields = set(common) | {"storage", "query", "row_count", "records"}
+            if set(result) != expected_fields:
+                raise TypeError("Research result fields do not match the registered contract.")
+            records = result.get("records")
+            row_count = result.get("row_count")
+            if (
+                result.get("storage") != "local_synthetic_sqlite_fixture"
+                or result.get("query") != request.parameters["query"].strip()
+                or isinstance(row_count, bool)
+                or not isinstance(row_count, int)
+                or not isinstance(records, list)
+                or row_count != len(records)
+                or row_count > 5
+            ):
+                raise TypeError("Research result values do not match the registered contract.")
+            for record in records:
+                if (
+                    not isinstance(record, dict)
+                    or set(record) != {"id", "title", "content", "source"}
+                    or not all(isinstance(value, str) for value in record.values())
+                ):
+                    raise TypeError("Research result record does not match the registered contract.")
+            return result
+
+        if self.input_kind == "email_request_v1":
+            if set(result) != set(common):
+                raise TypeError("Email result fields do not match the registered contract.")
+            return result
+
+        raise TypeError("Provider tool result kind is not supported.")
+
+
 class ProviderToolRegistry:
-    """Provider-side, deny-by-default binding of agent, action, resource, and permit mode."""
+    """Provider-side deny-by-default registry of versioned tool contracts."""
 
     DEFAULT_BINDINGS = {
-        ("research_agent", "read_database", "research_db"): "ALLOW",
-        ("research_agent", "send_email", "company_email"): "APPROVED",
+        ("research_agent", "read_database", "research_db"): ProviderToolContract(
+            version="1.0.0",
+            required_mode="ALLOW",
+            input_kind="research_query_v1",
+            parameter_fields=frozenset({"query"}),
+            result_status="read_only",
+        ),
+        ("research_agent", "send_email", "company_email"): ProviderToolContract(
+            version="1.0.0",
+            required_mode="APPROVED",
+            input_kind="email_request_v1",
+            parameter_fields=frozenset({"recipient", "subject", "body"}),
+            result_status="simulated",
+        ),
     }
 
-    def __init__(self, bindings: dict[tuple[str, str, str], str] | None = None) -> None:
+    def __init__(
+        self,
+        bindings: dict[tuple[str, str, str], ProviderToolContract] | None = None,
+    ) -> None:
         configured = self.DEFAULT_BINDINGS if bindings is None else bindings
         if not isinstance(configured, dict) or not configured:
-            raise ValueError("Provider tool bindings must be a non-empty mapping.")
-        self._bindings: dict[tuple[str, str, str], str] = {}
-        for binding, required_mode in configured.items():
+            raise ValueError("Provider tool contracts must be a non-empty mapping.")
+        self._bindings: dict[tuple[str, str, str], ProviderToolContract] = {}
+        for binding, contract in configured.items():
             if (
                 not isinstance(binding, tuple)
                 or len(binding) != 3
                 or not all(isinstance(part, str) and IDENTIFIER_RE.fullmatch(part) for part in binding)
             ):
-                raise ValueError("Provider bindings must be exact (agent, action, resource) identifier triples.")
-            if required_mode not in {"ALLOW", "APPROVED"}:
-                raise ValueError("Provider bindings must require ALLOW or APPROVED permits.")
-            self._bindings[binding] = required_mode
+                raise ValueError("Provider contracts must bind exact (agent, action, resource) identifier triples.")
+            if not isinstance(contract, ProviderToolContract):
+                raise ValueError("Every Provider binding must contain a versioned tool contract.")
+            if contract.required_mode not in {"ALLOW", "APPROVED"}:
+                raise ValueError("Provider contracts must require ALLOW or APPROVED permits.")
+            if not re.fullmatch(r"\\d+\\.\\d+\\.\\d+", contract.version):
+                raise ValueError("Provider contract versions must use semantic version notation.")
+            self._bindings[binding] = contract
+
+    def contract_for(self, request: ActionRequest) -> ProviderToolContract:
+        binding = (request.agent_id, request.action, request.resource)
+        contract = self._bindings.get(binding)
+        if contract is None:
+            raise DispatchAuthorizationError(
+                "No Provider tool contract exists for this agent/action/resource tuple."
+            )
+        return contract
 
     def required_mode(self, request: ActionRequest) -> str:
-        binding = (request.agent_id, request.action, request.resource)
-        required_mode = self._bindings.get(binding)
-        if required_mode is None:
-            raise DispatchAuthorizationError(
-                "No Provider tool binding exists for this agent/action/resource tuple."
-            )
-        return required_mode
+        return self.contract_for(request).required_mode
 
     def authorize(self, request: ActionRequest, permit: DispatchPermit) -> None:
-        required_mode = self.required_mode(request)
-        if permit.mode != required_mode:
+        contract = self.contract_for(request)
+        if permit.mode != contract.required_mode:
             raise DispatchAuthorizationError(
-                "The signed permit mode does not satisfy the Provider tool binding."
+                "The signed permit mode does not satisfy the Provider tool contract."
             )
 
 
@@ -463,29 +572,26 @@ class ProviderExecutionAdapter:
         self.research_fixture = ReadOnlyResearchFixture(research_fixture_db_path)
         self.mock_adapter = MockExecutionAdapter()
 
-    def validate(self, request: ActionRequest) -> None:
-        binding = (request.action, request.resource)
-        if binding == ("read_database", "research_db"):
-            self.research_fixture.validate_parameters(request.parameters)
-            return
-        if binding == ("send_email", "company_email"):
-            return
-        raise DispatchAuthorizationError("No Provider execution adapter exists for this action/resource pair.")
+    def validate(self, request: ActionRequest, contract: ProviderToolContract) -> None:
+        contract.validate_parameters(request.parameters, self.research_fixture)
 
-    def execute(self, request: ActionRequest) -> dict[str, Any]:
+    def execute(self, request: ActionRequest, contract: ProviderToolContract) -> dict[str, Any]:
         binding = (request.action, request.resource)
         if binding == ("read_database", "research_db"):
             result = self.research_fixture.search(request.parameters)
-            result.update({
-                "agent_id": request.agent_id,
-                "action": request.action,
-                "resource": request.resource,
-                "request_id": request.request_id,
-            })
-            return result
-        if binding == ("send_email", "company_email"):
-            return self.mock_adapter.execute(request)
-        raise DispatchAuthorizationError("No Provider execution adapter exists for this action/resource pair.")
+        elif binding == ("send_email", "company_email"):
+            result = self.mock_adapter.execute(request)
+        else:
+            raise DispatchAuthorizationError("No Provider execution adapter exists for this action/resource pair.")
+
+        result.update({
+            "agent_id": request.agent_id,
+            "action": request.action,
+            "resource": request.resource,
+            "request_id": request.request_id,
+            "contract_version": contract.version,
+        })
+        return contract.validate_result(request, result)
 
 
 class ToolProviderService:
@@ -520,18 +626,19 @@ class ToolProviderService:
             "action": data["action"], "resource": data["resource"],
             "parameters": data["parameters"], "request_id": data["request_id"],
         })
-        # Validate the exact tool parameter schema before consuming a permit or
-        # claiming an execution receipt. The Provider then independently checks
-        # the Agent/action/resource tuple and required signed permit mode.
-        self.adapter.validate(request)
-        expected_mode = self.registry.required_mode(request)
+        # Resolve the versioned tool contract and validate its exact input schema
+        # before consuming a signed permit or claiming an execution receipt.
+        contract = self.registry.contract_for(request)
+        self.adapter.validate(request, contract)
         permit = self.verifier.consume(request, payload["permit"])
         self.registry.authorize(request, permit)
-        if permit.mode != expected_mode:
-            raise DispatchAuthorizationError("Provider permit mode does not match the registered tool binding.")
-        # The durable receipt is claimed before the tool is invoked. An interrupted
-        # execution is never replayed automatically.
-        return self.receipts.execute_once(request, self.adapter.execute)
+
+        def execute_with_contract(candidate: ActionRequest) -> dict[str, Any]:
+            return self.adapter.execute(candidate, contract)
+
+        # The durable receipt stores only a result that passed the same versioned
+        # output contract. An interrupted execution is never replayed automatically.
+        return self.receipts.execute_once(request, execute_with_contract)
 
 
 class ToolProviderHTTPServer(ThreadingHTTPServer):

@@ -180,7 +180,7 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
             {
                 "action": "send_email",
                 "resource": "company_email",
-                "parameters": {"to": "demo@example.test"},
+                "parameters": {"recipient": "demo@example.test", "subject": "Demo notice", "body": "Test-only email payload."},
                 "request_id": "provider-approved-001",
             },
         )
@@ -198,6 +198,7 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         self.assertEqual(result["decision"], "ALLOW")
         self.assertTrue(result["executed"])
         self.assertEqual(result["result"]["action"], "send_email")
+        self.assertEqual(result["result"]["contract_version"], "1.0.0")
 
     def test_approved_gateway_reconciles_a_lost_provider_response(self) -> None:
         request = ActionRequest.from_payload(
@@ -205,7 +206,7 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
             {
                 "action": "send_email",
                 "resource": "company_email",
-                "parameters": {"to": "reconcile@example.test"},
+                "parameters": {"recipient": "reconcile@example.test", "subject": "Reconciliation notice", "body": "Test-only reconciliation payload."},
                 "request_id": "approved-reconcile-001",
             },
         )
@@ -479,6 +480,7 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         self.assertEqual(result["row_count"], 1)
         self.assertEqual(result["records"][0]["id"], "market-001")
         self.assertEqual(result["records"][0]["source"], "synthetic-fixture")
+        self.assertEqual(result["contract_version"], "1.0.0")
 
         # A SQL-shaped query remains plain bound text and cannot turn the WHERE
         # clause into a tautology or expose the remaining fixture rows.
@@ -514,6 +516,45 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         finally:
             connection.close()
 
+    def test_provider_contract_rejects_legacy_email_shape_and_versions_valid_results(self) -> None:
+        valid = ActionRequest.from_payload(
+            "research_agent",
+            {
+                "action": "send_email",
+                "resource": "company_email",
+                "parameters": {
+                    "recipient": "contract@example.test",
+                    "subject": "Contract test",
+                    "body": "This email is never sent.",
+                },
+                "request_id": "provider-contract-email-valid-001",
+            },
+        )
+        valid_status, valid_body = self._post({
+            "request": valid.to_dict(),
+            "permit": self._permit(valid, mode="APPROVED").__dict__,
+        })
+        self.assertEqual(valid_status, 200)
+        self.assertEqual(valid_body["result"]["status"], "simulated")
+        self.assertEqual(valid_body["result"]["contract_version"], "1.0.0")
+
+        legacy = ActionRequest.from_payload(
+            "research_agent",
+            {
+                "action": "send_email",
+                "resource": "company_email",
+                "parameters": {"to": "legacy@example.test"},
+                "request_id": "provider-contract-email-legacy-001",
+            },
+        )
+        legacy_status, _ = self._post({
+            "request": legacy.to_dict(),
+            "permit": self._permit(legacy, mode="APPROVED").__dict__,
+        })
+        self.assertEqual(legacy_status, 400)
+        receipt_status, _ = self._get_receipt(legacy.agent_id, legacy.request_id)
+        self.assertEqual(receipt_status, 404)
+
     def test_provider_rejects_invalid_research_schema_before_claiming_execution(self) -> None:
         request = ActionRequest.from_payload(
             "research_agent",
@@ -542,7 +583,16 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         ]
         for index, (agent_id, action, resource, mode) in enumerate(cases, start=1):
             with self.subTest(agent_id=agent_id, action=action, resource=resource, mode=mode):
-                parameters = {"query": "bounded-provider-test"} if action == "read_database" else {}
+                if action == "read_database":
+                    parameters = {"query": "bounded-provider-test"}
+                elif action == "send_email":
+                    parameters = {
+                        "recipient": "denied@example.test",
+                        "subject": "Denied request",
+                        "body": "This must not execute.",
+                    }
+                else:
+                    parameters = {}
                 request = ActionRequest.from_payload(
                     agent_id,
                     {
@@ -731,7 +781,7 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
             {
                 "action": "send_email",
                 "resource": "company_email",
-                "parameters": {"to": "pending-recovery@example.test"},
+                "parameters": {"recipient": "pending-recovery@example.test", "subject": "Pending recovery", "body": "Test-only pending recovery payload."},
                 "request_id": "gateway-restart-pending-approval-001",
             },
         )
@@ -768,7 +818,7 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
             {
                 "action": "send_email",
                 "resource": "company_email",
-                "parameters": {"to": "approved-recovery@example.test"},
+                "parameters": {"recipient": "approved-recovery@example.test", "subject": "Approved recovery", "body": "Test-only approved recovery payload."},
                 "request_id": "gateway-restart-approved-execution-001",
             },
         )
