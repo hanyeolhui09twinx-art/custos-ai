@@ -118,7 +118,8 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
     @staticmethod
     def _permit(request: ActionRequest, mode: str = "ALLOW"):
         authority = DispatchAuthority(signing_key=SIGNING_KEY)
-        return authority.issue(request, mode=mode)
+        approval_id = "provider-registry-test-approval" if mode == "APPROVED" else None
+        return authority.issue(request, mode=mode, approval_id=approval_id)
 
     @staticmethod
     def _permit_with_key(request: ActionRequest, key_id: str, key: bytes):
