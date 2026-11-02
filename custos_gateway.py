@@ -205,6 +205,17 @@ class ApprovalStore:
                 )
             """)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_approvals_status ON approvals(status, created_at)")
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS request_receipts (
+                    agent_id TEXT NOT NULL,
+                    request_id TEXT NOT NULL,
+                    request_digest TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    response_json TEXT,
+                    created_at REAL NOT NULL,
+                    PRIMARY KEY (agent_id, request_id)
+                )
+            """)
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path, timeout=10, isolation_level=None)
@@ -224,6 +235,60 @@ class ApprovalStore:
         else:
             result.pop("result_json", None)
         return result
+
+    def claim_request(self, request: ActionRequest, now: float) -> dict[str, Any] | None:
+        """Claim an idempotency key or return the cached result for an exact retry."""
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT * FROM request_receipts WHERE agent_id=? AND request_id=?",
+                (request.agent_id, request.request_id),
+            ).fetchone()
+            if row is not None:
+                conn.rollback()
+                if row["request_digest"] != request.digest:
+                    raise ApprovalConflict("request_id was already used with a different payload.")
+                if row["status"] == "completed" and row["response_json"]:
+                    cached = json.loads(row["response_json"])
+                    cached["replayed"] = True
+                    return cached
+                raise ApprovalConflict("This request_id is already processing or has failed.")
+            conn.execute(
+                """INSERT INTO request_receipts
+                   (agent_id, request_id, request_digest, status, created_at)
+                   VALUES (?, ?, ?, 'processing', ?)""",
+                (request.agent_id, request.request_id, request.digest, now),
+            )
+            conn.commit()
+        return None
+
+    def complete_request(self, request: ActionRequest, response: dict[str, Any]) -> None:
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """UPDATE request_receipts SET status='completed', response_json=?
+                   WHERE agent_id=? AND request_id=? AND status='processing'""",
+                (canonical_json(response), request.agent_id, request.request_id),
+            )
+            if cursor.rowcount != 1:
+                raise ApprovalConflict("Request receipt could not be finalized.")
+
+    def fail_request(self, request: ActionRequest) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """UPDATE request_receipts SET status='failed'
+                   WHERE agent_id=? AND request_id=? AND status='processing'""",
+                (request.agent_id, request.request_id),
+            )
+
+    def update_request_result(self, request: ActionRequest, response: dict[str, Any]) -> None:
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """UPDATE request_receipts SET response_json=?
+                   WHERE agent_id=? AND request_id=? AND status='completed'""",
+                (canonical_json(response), request.agent_id, request.request_id),
+            )
+            if cursor.rowcount != 1:
+                raise ApprovalConflict("Completed request receipt was not found.")
 
     def create(self, request: ActionRequest, ttl_seconds: int, now: float) -> str:
         approval_id = str(uuid.uuid4())
@@ -290,6 +355,18 @@ class ApprovalStore:
             if request_data["agent_id"] != agent_id:
                 conn.rollback()
                 raise ApprovalForbidden("Only the requesting agent may execute this approval.")
+            request = ActionRequest.from_payload(
+                request_data["agent_id"],
+                {
+                    "action": request_data["action"],
+                    "resource": request_data["resource"],
+                    "parameters": request_data["parameters"],
+                    "request_id": request_data["request_id"],
+                },
+            )
+            if request.digest != row["request_digest"]:
+                conn.rollback()
+                raise ApprovalConflict("Stored approval payload failed its integrity check.")
             if row["expires_at"] <= now:
                 conn.execute(
                     "UPDATE approvals SET status='expired' WHERE approval_id=? AND status IN ('pending','approved')",
@@ -305,18 +382,8 @@ class ApprovalStore:
                 (approval_id,),
             )
             conn.commit()
-        request = ActionRequest.from_payload(
-            request_data["agent_id"],
-            {
-                "action": request_data["action"],
-                "resource": request_data["resource"],
-                "parameters": request_data["parameters"],
-                "request_id": request_data["request_id"],
-            },
-        )
-        if request.digest != row["request_digest"]:
-            raise ApprovalConflict("Stored approval payload failed its integrity check.")
         return request
+
 
     def finish_execution(self, approval_id: str, status: str, result: dict[str, Any] | None = None) -> None:
         if status not in {"executed", "failed", "blocked"}:
@@ -353,37 +420,55 @@ class CustosGateway:
 
     def submit(self, request: ActionRequest) -> dict[str, Any]:
         now = self.clock()
-        self.audit_log.record("REQUEST_RECEIVED", request.to_dict())
-        decision, reason = self.policy_engine.evaluate(request)
-        self.audit_log.record(
-            "POLICY_DECISION",
-            {"request_id": request.request_id, "decision": decision.value, "reason": reason},
-        )
-
-        if decision is Decision.BLOCK:
-            return {
-                "decision": Decision.BLOCK.value,
-                "reason": reason,
-                "executed": False,
-                "request_id": request.request_id,
-            }
-
-        if decision is Decision.HUMAN_APPROVAL:
-            approval_id = self.store.create(request, self.approval_ttl_seconds, now)
+        cached = self.store.claim_request(request, now)
+        if cached is not None:
             self.audit_log.record(
-                "APPROVAL_PENDING",
-                {"approval_id": approval_id, "request_id": request.request_id, "expires_at": now + self.approval_ttl_seconds},
+                "REQUEST_REPLAYED",
+                {"request_id": request.request_id, "agent_id": request.agent_id},
             )
-            return {
-                "decision": Decision.HUMAN_APPROVAL.value,
-                "reason": reason,
-                "executed": False,
-                "approval_id": approval_id,
-                "expires_at": now + self.approval_ttl_seconds,
-                "request_id": request.request_id,
-            }
+            return cached
 
-        return self._execute_allowed(request)
+        try:
+            self.audit_log.record("REQUEST_RECEIVED", request.to_dict())
+            decision, reason = self.policy_engine.evaluate(request)
+            self.audit_log.record(
+                "POLICY_DECISION",
+                {"request_id": request.request_id, "decision": decision.value, "reason": reason},
+            )
+
+            if decision is Decision.BLOCK:
+                response = {
+                    "decision": Decision.BLOCK.value,
+                    "reason": reason,
+                    "executed": False,
+                    "request_id": request.request_id,
+                }
+            elif decision is Decision.HUMAN_APPROVAL:
+                approval_id = self.store.create(request, self.approval_ttl_seconds, now)
+                self.audit_log.record(
+                    "APPROVAL_PENDING",
+                    {"approval_id": approval_id, "request_id": request.request_id, "expires_at": now + self.approval_ttl_seconds},
+                )
+                response = {
+                    "decision": Decision.HUMAN_APPROVAL.value,
+                    "reason": reason,
+                    "executed": False,
+                    "approval_id": approval_id,
+                    "expires_at": now + self.approval_ttl_seconds,
+                    "request_id": request.request_id,
+                }
+            else:
+                response = self._execute_allowed(request)
+
+            self.store.complete_request(request, response)
+            return response
+        except Exception as exc:
+            self.store.fail_request(request)
+            self.audit_log.record(
+                "REQUEST_PROCESSING_FAILED",
+                {"request_id": request.request_id, "error": type(exc).__name__},
+            )
+            raise
 
     def _execute_allowed(self, request: ActionRequest) -> dict[str, Any]:
         decision, reason = self.policy_engine.evaluate(request)
@@ -449,12 +534,14 @@ class CustosGateway:
                     "APPROVED_ACTION_BLOCKED_AT_DISPATCH",
                     {"approval_id": approval_id, "request_id": request.request_id, "reason": reason},
                 )
-                return {
+                response = {
                     "decision": Decision.BLOCK.value,
                     "reason": "Current policy blocks this previously approved action.",
                     "executed": False,
                     "approval_id": approval_id,
                 }
+                self.store.update_request_result(request, response)
+                return response
 
             result = self.adapter.execute(request)
             self.store.finish_execution(approval_id, "executed", result)
@@ -462,13 +549,15 @@ class CustosGateway:
                 "APPROVED_ACTION_EXECUTED",
                 {"approval_id": approval_id, "request_id": request.request_id, "result": result},
             )
-            return {
+            response = {
                 "decision": Decision.ALLOW.value,
                 "reason": "A valid human approval was verified; simulated execution completed.",
                 "executed": True,
                 "approval_id": approval_id,
                 "result": result,
             }
+            self.store.update_request_result(request, response)
+            return response
         except Exception as exc:
             try:
                 self.store.finish_execution(approval_id, "failed", {"error": type(exc).__name__})
