@@ -134,13 +134,13 @@ if (!home.includes("TARGET ARCHITECTURE") || !home.includes("the current Python 
 if (!home.includes('class="flow-routing"') || !home.includes("CONDITIONAL ROUTING")) {
   throw new Error("Homepage architecture must show conditional policy routing.");
 }
-for (const phrase of ["ALLOW", "HUMAN_APPROVAL", "BLOCK", "Only ALLOW", "BLOCK stops here", "DISPATCH RE-CHECK", "LOCAL TRACE"]) {
+for (const phrase of ["ALLOW", "HUMAN_APPROVAL", "BLOCK", "Only ALLOW", "BLOCK stops here", "ALLOW + APPROVED REVIEW ONLY", "DISPATCH RE-CHECK", "LOCAL TRACE"]) {
   if (!home.includes(phrase)) throw new Error("Homepage conditional flow is missing: " + phrase);
 }
 if (home.includes("<strong>HUMAN AUTHORITY</strong>")) {
   throw new Error("Homepage must not present human review as mandatory for every request.");
 }
-if (!css.includes(".flow-routing{") || !css.includes(".flow-outcomes{") ||
+if (!css.includes(".flow-routing{") || !css.includes(".flow-outcomes{") || !css.includes(".flow-route-continue{") ||
     !css.includes("@media(max-width:460px){.flow-outcomes{grid-template-columns:1fr}")) {
   throw new Error("Conditional routing diagram is missing responsive layout styles.");
 }
