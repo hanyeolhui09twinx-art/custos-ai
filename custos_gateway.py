@@ -712,7 +712,19 @@ class CustosGateway:
             }
 
         permit = self._dispatch_authority.issue(request, mode="ALLOW")
-        result = self.adapter.execute(request, permit)
+        try:
+            result = self.adapter.execute(request, permit)
+        except DispatchAuthorizationError:
+            self.audit_log.record(
+                "DISPATCH_BLOCKED_AT_ADAPTER_BOUNDARY",
+                {"request_id": request.request_id, "reason": "Dispatch permit or current authorization was rejected."},
+            )
+            return {
+                "decision": Decision.BLOCK.value,
+                "reason": "Adapter-boundary authorization rejected dispatch.",
+                "executed": False,
+                "request_id": request.request_id,
+            }
         self.audit_log.record("EXECUTION_SIMULATED", {"request_id": request.request_id, "result": result})
         return {
             "decision": Decision.ALLOW.value,
