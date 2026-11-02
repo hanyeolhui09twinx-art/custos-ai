@@ -114,6 +114,23 @@ const lab = fs.readFileSync(path.join(site, "lab.html"), "utf8");
 if (!lab.includes("img-src 'self' data:")) throw new Error("Lab CSP must permit its same-origin brand icon.");
 if (!lab.includes('href="./index.html"')) throw new Error("Lab is missing a return link to the corporate website.");
 const localConsole = fs.readFileSync(path.join(site, "local-console.html"), "utf8");
+const issueTemplates = path.join(root, ".github", "ISSUE_TEMPLATE");
+for (const template of ["bug_report.yml", "research_proposal.yml", "config.yml"]) {
+  if (!fs.existsSync(path.join(issueTemplates, template))) throw new Error("Missing GitHub issue template: " + template);
+}
+const bugTemplate = fs.readFileSync(path.join(issueTemplates, "bug_report.yml"), "utf8");
+const researchTemplate = fs.readFileSync(path.join(issueTemplates, "research_proposal.yml"), "utf8");
+if (!bugTemplate.includes("Steps to reproduce") || !bugTemplate.includes("Public disclosure check")) {
+  throw new Error("Bug report template must collect reproduction steps and a disclosure check.");
+}
+if (!researchTemplate.includes("Problem or research question") || !researchTemplate.includes("Proposed approach")) {
+  throw new Error("Research proposal template must separate the problem from the proposed approach.");
+}
+const contact = fs.readFileSync(path.join(site, "contact.html"), "utf8");
+if (!contact.includes("template=bug_report.yml") || !contact.includes("template=research_proposal.yml")) {
+  throw new Error("Contact page must link to the structured issue templates.");
+}
+
 if (!localConsole.includes("img-src 'self'")) throw new Error("Local Control Room CSP must permit its same-origin brand icon.");
 if (!localConsole.includes('href="./index.html"')) throw new Error("Local Control Room is missing its corporate website return link.");
 if (!localConsole.includes('href="./lab.html"') || !localConsole.includes('href="./index.html"')) {
