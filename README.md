@@ -89,21 +89,26 @@ The server binds to `127.0.0.1:8765` by default. Remote binding is rejected.
 
 ### Optional separate mock tool-provider process
 
-The following two-terminal setup tests a second local process. Both processes must receive the same temporary HMAC key. Use development-only values.
+The following two-terminal setup runs the gateway and mock provider as separate local processes. It uses a development-only key ring with an old key (`legacy`) retained during a manual rotation overlap and a new active key (`v2`). Never commit these values.
 
-**Terminal A — start the provider:**
+**Terminal A — prepare the key ring and start the provider:**
 
 ~~~powershell
-$dispatchKey = python -c "import secrets; print(secrets.token_hex(32))"
-$env:CUSTOS_DISPATCH_SIGNING_KEY = $dispatchKey
-Write-Host "Copy this temporary key into Terminal B: $dispatchKey"
+$legacyKey = python -c "import secrets; print(secrets.token_hex(32))"
+$v2Key = python -c "import secrets; print(secrets.token_hex(32))"
+$keyRing = @{ legacy = $legacyKey; v2 = $v2Key }
+$encodedKeyRing = $keyRing | ConvertTo-Json -Compress
+$env:CUSTOS_DISPATCH_KEYS = $encodedKeyRing
+$env:CUSTOS_ACTIVE_DISPATCH_KEY_ID = "v2"
+Write-Host "Copy this key ring into Terminal B: $encodedKeyRing"
 python custos_provider.py --host 127.0.0.1 --port 8766
 ~~~
 
-**Terminal B — start the API and route dispatch through the provider:**
+**Terminal B — configure the gateway with the same overlap and activate `v2`:**
 
 ~~~powershell
-$env:CUSTOS_DISPATCH_SIGNING_KEY = "<same temporary key from Terminal A>"
+$env:CUSTOS_DISPATCH_KEYS = '<copy the JSON key ring from Terminal A>'
+$env:CUSTOS_ACTIVE_DISPATCH_KEY_ID = "v2"
 $env:CUSTOS_TOOL_PROVIDER_URL = "http://127.0.0.1:8766/v1/dispatch"
 $agentToken = python -c "import secrets; print(secrets.token_urlsafe(32))"
 $reviewerToken = python -c "import secrets; print(secrets.token_urlsafe(32))"
@@ -112,7 +117,9 @@ $env:CUSTOS_REVIEWER_TOKEN = $reviewerToken
 python custos_api.py
 ~~~
 
-The gateway sends the request and signed permit; the provider checks the signature, exact request digest, expiry, and durable one-time nonce before invoking its mock registry. Receipt lookups use a second HMAC key derived from the shared dispatch key and bind the signature to the exact GET path in the `X-Custos-Receipt-Signature` header; signatures are not placed in URL query strings. The shared development key is not a production key-management design. Both processes still run on one trusted machine and use loopback HTTP, and no external tools or credentials are connected.
+**Manual rotation sequence:** First deploy the provider with both old and new keys. Then switch every gateway signer to the new `CUSTOS_ACTIVE_DISPATCH_KEY_ID`. Keep the old key in both rings while old gateway instances may still issue permits. After all old signers are stopped and the 15-second permit lifetime plus deployment drain has elapsed, remove the old key from both rings and restart both processes. Removal is the revocation action; there is no built-in scheduled expiry for a retired key.
+
+The provider validates dispatch `key_id` values against its configured key ring. Receipt reads use a purpose-derived HMAC key selected by `X-Custos-Receipt-Key-Id` and a signature bound to the exact GET path in `X-Custos-Receipt-Signature`. The legacy single-key variable `CUSTOS_DISPATCH_SIGNING_KEY` remains supported as the `default` key for compatibility. Key rotation is manual environment configuration, not KMS/HSM-backed management. Both processes still run on one trusted machine over loopback HTTP, and no external tools or credentials are connected.
 
 ### API routes
 
@@ -151,7 +158,7 @@ This is **not a production security product**:
 - It binds to loopback only. Do not expose it to a network or connect it to valuable tools.
 - Agent identity is mapped from a configured static token. There is no asymmetric identity, signed request envelope, delegated credential chain, or hardware-backed key protection.
 - Approval state is stored in local SQLite. There is no distributed transaction with a downstream tool.
-- The separate mock provider verifies dispatch permits, HMAC-authenticates receipt reads, and stores execution receipts in another local process. Gateway startup also recovers local request receipts left processing, but recovery assumes a single gateway instance. The provider is not an OS sandbox and has no real tool credentials. The ledger provides provider-local at-most-once invocation behavior; a crash after a real downstream side effect but before receipt completion still requires that downstream tool's own idempotency key or status-query reconciliation.
+- The separate mock provider verifies key-ID-bound dispatch permits, HMAC-authenticates receipt reads, and stores execution receipts in another local process. A manually configured key ring supports overlapping old/new keys and retirement by removing a key. It is not an automated KMS/HSM system. Gateway startup also recovers local request receipts left processing, but recovery assumes a single gateway instance. The provider is not an OS sandbox and has no real tool credentials. The ledger provides provider-local at-most-once invocation behavior; a crash after a real downstream side effect but before receipt completion still requires that downstream tool's own idempotency key or status-query reconciliation.
 - Raw credential field names are rejected, but this is not general-purpose secret detection. Never place secrets in free-text values.
 - The audit log is hash-chained but not immutable against a privileged actor who can rewrite the entire file.
 - The Local Control Room uses development tokens. The public page code is part of the credential trust boundary; do not enter production secrets.
@@ -178,4 +185,5 @@ Custos should currently be described as a local research prototype with a mock e
 - [Day 010 — Durable execution receipts and recovery](devlog/day-010.md)
 - [Day 011 — Gateway restart recovery](devlog/day-011.md)
 - [Day 012 — Authenticated provider receipt lookups](devlog/day-012.md)
+- [Day 013 — Dispatch key-ring rotation](devlog/day-013.md)
 - [Day 011 — Gateway restart recovery](devlog/day-011.md)
