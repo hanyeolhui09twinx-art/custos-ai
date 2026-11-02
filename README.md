@@ -177,4 +177,5 @@ Custos should currently be described as a local research prototype with a mock e
 - [Day 009 — Separate mock tool-provider process](devlog/day-009.md)
 - [Day 010 — Durable execution receipts and recovery](devlog/day-010.md)
 - [Day 011 — Gateway restart recovery](devlog/day-011.md)
+- [Day 012 — Authenticated provider receipt lookups](devlog/day-012.md)
 - [Day 011 — Gateway restart recovery](devlog/day-011.md)
