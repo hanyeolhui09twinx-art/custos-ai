@@ -253,7 +253,6 @@ def create_server(
                     if not 1 <= limit <= 200:
                         raise ValueError("limit must be an integer between 1 and 200.")
 
-                    selected = [component_filter] if component_filter != "all" else ["gateway", "provider"]
                     sources = {
                         "gateway": (gateway.store.db_path, gateway.audit_log.file_path),
                         "provider": (resolved_provider_db, resolved_provider_audit),
@@ -262,9 +261,14 @@ def create_server(
                         name: read_keyring_observability(
                             *sources[name], name, event_filter=event_filter, limit=limit
                         )
-                        for name in selected
+                        for name in ("gateway", "provider")
                     }
-                    events = [event for state in components.values() for event in state["events"]]
+                    selected = (component_filter,) if component_filter != "all" else ("gateway", "provider")
+                    events = [
+                        event
+                        for name in selected
+                        for event in components[name]["events"]
+                    ]
                     events.sort(key=lambda item: item.get("timestamp", ""), reverse=True)
                     payload = {
                         "generated_at": datetime.now(timezone.utc).isoformat(),
