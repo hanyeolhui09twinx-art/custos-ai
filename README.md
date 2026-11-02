@@ -6,7 +6,17 @@
 
 Custos is an early-stage defensive prototype exploring how autonomous AI actions can be independently verified before execution, while making security decisions visible to humans.
 
-## Current prototype
+## Browser Simulation Studio (Korean / English)
+
+A self-contained browser edition is available in [`simulation-studio/`](simulation-studio/).
+
+Open [`simulation-studio/index.html`](simulation-studio/index.html) in a modern browser. It requires no Python, Node.js, package installation, or local server.
+
+The browser edition includes 13 preset scenarios, policy and authority decision simulations, human approval/denial flows, sequential experiments, Multi-Agent conflict simulations, pause/resume controls, and browser-local run history.
+
+**Boundary:** this is a browser-only sandbox. It does not connect to real agents, the Python gateway, local Workers, external APIs, email systems, or production databases. All actions are simulated. See [the browser edition guide](simulation-studio/README.md).
+
+## Current server-side prototype
 
 The control gateway evaluates an autonomous AI request through multiple checks:
 
@@ -33,27 +43,19 @@ Custos does **not** treat someone as malicious simply because their actor type i
 
 ```text
 custos-ai/
+├── simulation-studio/
+│   ├── index.html
+│   ├── README.md
+│   └── SHA256SUMS.txt
 ├── custos_gateway.py
-├── custos_security_gateway.py
-├── threat_actor_engine.py
-├── custos_policy.json
-├── custos_policy.lock
 ├── audit_log.py
-├── demo_security.py
-├── tests/
-│   ├── test_custos_gateway.py
-│   ├── test_custos_security_gateway.py
-│   └── test_threat_actor_engine.py
-└── devlog/
-    ├── day-001.md
-    ├── day-003.md
-    ├── day-004.md
-    └── day-005.md
+├── devlog/
+└── tests/
 ```
 
 Runtime artifacts such as local databases, audit logs, and outbox files are intentionally not committed.
 
-## Run
+## Run the server-side prototype
 
 ```bash
 python -m unittest discover -s tests -p 'test_*.py' -v
@@ -62,4 +64,4 @@ python demo_security.py
 
 ## Important limitations
 
-This is a local research prototype, not a production security product. Identity/key management, execution isolation, durable approvals, telemetry ingestion, policy management, threat intelligence, and adversarial testing against real autonomous-agent environments are still incomplete.
+This is a local research prototype, not a production security product. Identity/key management, execution isolation, durable approvals, telemetry ingestion, policy management, threat intelligence, and adversarial testing against real autonomous-agent environments are still incomplete. The browser simulation is illustrative and does not provide the server-side security guarantees.
