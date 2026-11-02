@@ -29,6 +29,9 @@ for (const file of allPages) {
     if (!/data-lang-button="ko"/.test(html) || !/data-lang-button="en"/.test(html)) {
       throw new Error(file + ": missing bilingual language controls");
     }
+    if (!/class="skip-link"/.test(html) || !/id="main-content"/.test(html)) {
+      throw new Error(file + ": missing keyboard skip link or main landmark");
+    }
   }
 
   const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
