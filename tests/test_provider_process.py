@@ -116,9 +116,9 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         )
 
     @staticmethod
-    def _permit(request: ActionRequest):
+    def _permit(request: ActionRequest, mode: str = "ALLOW"):
         authority = DispatchAuthority(signing_key=SIGNING_KEY)
-        return authority.issue(request, mode="ALLOW")
+        return authority.issue(request, mode=mode)
 
     @staticmethod
     def _permit_with_key(request: ActionRequest, key_id: str, key: bytes):
@@ -454,6 +454,34 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         finally:
             self._stop_provider()
             self._start_provider(signing_keys=KEY_RING, active_key_id="default")
+
+    def test_provider_registry_denies_unregistered_bindings_and_wrong_permit_modes(self) -> None:
+        cases = [
+            ("research_agent", "send_email", "company_email", "ALLOW"),
+            ("research_agent", "read_database", "research_db", "APPROVED"),
+            ("research_agent", "read_database", "payroll_db", "ALLOW"),
+            ("unregistered_agent", "read_database", "research_db", "ALLOW"),
+            ("research_agent", "delete_audit_log", "audit_log", "ALLOW"),
+        ]
+        for index, (agent_id, action, resource, mode) in enumerate(cases, start=1):
+            with self.subTest(agent_id=agent_id, action=action, resource=resource, mode=mode):
+                request = ActionRequest.from_payload(
+                    agent_id,
+                    {
+                        "action": action,
+                        "resource": resource,
+                        "parameters": {},
+                        "request_id": f"provider-registry-deny-{index:03d}",
+                    },
+                )
+                status, body = self._post({
+                    "request": request.to_dict(),
+                    "permit": self._permit(request, mode=mode).__dict__,
+                })
+                self.assertEqual(status, 403)
+                self.assertEqual(body.get("code"), "dispatch_denied")
+                receipt_status, _ = self._get_receipt(agent_id, request.request_id)
+                self.assertEqual(receipt_status, 404)
 
     def test_provider_rejects_missing_forged_and_request_substituted_permits(self) -> None:
         request = self._request("provider-invalid-001")
