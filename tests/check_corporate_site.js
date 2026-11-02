@@ -128,6 +128,9 @@ for (const lens of ["/ASSUMPTIONS", "/BLINDSPOT", "/COUNTER", "/EDGECASE", "/SEL
   if (!security.includes(lens)) throw new Error("Security page is missing threat-model section " + lens);
 }
 const home = fs.readFileSync(path.join(site, "index.html"), "utf8");
+if (!home.includes("TARGET ARCHITECTURE") || !home.includes("the current Python execution adapter is a mock")) {
+  throw new Error("Homepage architecture diagram must be labeled as a conceptual target, not live enforcement.");
+}
 for (const phrase of ["CURRENT BUILD / 03 NOV 2026", "IMPLEMENTED LOCALLY", "SIMULATED", "NOT YET INTEGRATED", "MockExecutionAdapter", "real agent framework"]) {
   if (!home.toLowerCase().includes(phrase.toLowerCase())) throw new Error("Homepage prototype-status panel is missing: " + phrase);
 }
