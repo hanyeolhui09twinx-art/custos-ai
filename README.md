@@ -40,7 +40,7 @@ The site is built as static HTML, CSS, and JavaScript and deployed through GitHu
 ### 1. Python policy gateway and local API
 
 - `custos_gateway.py` — deny-by-default policy evaluation, strict request validation, SQLite-backed approval and request state, gateway-restart recovery for interrupted requests, 15-second request-bound HMAC dispatch permits, adapter-boundary policy re-checks, approval-claim verification, and optional signed dispatch to a separate provider process.
-- `custos_provider.py` — loopback-only mock tool-provider service. It independently verifies gateway permits, persists consumed nonces, and maintains a SQLite execution-receipt ledger keyed by Agent and request ID.
+- `custos_provider.py` — loopback-only mock tool-provider service. Beyond verifying Gateway HMAC permits, it enforces a deny-by-default exact (Agent, action, resource) registry and required ALLOW/APPROVED mode, persists consumed nonces, and maintains a SQLite execution-receipt ledger keyed by Agent and request ID.
 - `custos_api.py` — authenticated local HTTP API. It binds to loopback and allows browser CORS only from the official Custos GitHub Pages origin.
 - `audit_log.py` — local JSONL events linked by a SHA-256 hash chain.
 - `tests/test_custos.py` and `tests/test_provider_process.py` — gateway/API controls plus separate-process tests for normal and human-approved dispatch, signed permits, replay, request idempotency, crash recovery, lost-response reconciliation, and fail-closed behavior.
@@ -53,7 +53,7 @@ Demonstration policy:
 | `research_agent` | `send_email` | `company_email` | HUMAN_APPROVAL, then mock execution |
 | Any configured agent | `disable_custos`, `modify_custos_policy`, `delete_audit_log` | Any | BLOCK |
 
-Unknown agents, unlisted actions, and out-of-scope resources are denied by default. The separate loopback provider independently verifies signed permits and persists both consumed nonces and execution receipts. A completed receipt returns the stored result for the same Agent/request ID and digest; a different digest conflicts. An interrupted executing receipt becomes indeterminate at provider startup and is never replayed automatically. The provider still runs only a mock adapter and has no real tool credentials. This is a same-host research harness, not an OS sandbox or production isolation boundary.
+Unknown agents, unlisted actions, and out-of-scope resources are denied by the Gateway; the separate loopback Provider repeats that check against its own exact (agent, action, resource) registry and also requires the registered permit mode. The current bindings are research_agent/read_database/research_db (ALLOW) and research_agent/send_email/company_email (APPROVED). It independently verifies signed permits and persists consumed nonces and execution receipts. A completed receipt returns the stored result for the same Agent/request ID and digest; a different digest conflicts. An interrupted executing receipt becomes indeterminate at Provider startup and is never replayed automatically. APPROVED remains a Gateway-signed assertion: the Provider does not independently query Reviewer identity or the Gateway approval store. The Provider still runs only a mock adapter and has no real tool credentials. This is a same-host research harness, not an OS sandbox or production isolation boundary.
 
 ### 2. Browser Simulation Lab
 
