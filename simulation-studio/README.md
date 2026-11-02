@@ -77,3 +77,8 @@ See the root README for API routes and docs/THREAT_MODEL.md for assumptions, bli
 ## Contribution guide
 
 See the repository root's CONTRIBUTING.md for local setup, engineering standards, test commands, and security expectations. Pull requests use .github/PULL_REQUEST_TEMPLATE.md.
+
+
+## Latest product experience work
+
+See [Day 005 — Product experience and explanation](../devlog/day-005.md) for the homepage status panel, three-way decision guide, guided first-use path, and end-to-end approval walkthrough.
