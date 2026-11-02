@@ -36,7 +36,7 @@ def receipt_lookup_signature(signing_key: bytes, request_path: str) -> str:
     receipt_key = hmac.new(
         signing_key, b"custos-ai/provider-receipt-lookup/v1", hashlib.sha256
     ).digest()
-    message = b"GET\\n" + request_path.encode("utf-8")
+    message = b"GET" + bytes([10]) + request_path.encode("utf-8")
     return hmac.new(receipt_key, message, hashlib.sha256).hexdigest()
 
 
