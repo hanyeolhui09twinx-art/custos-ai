@@ -30,6 +30,12 @@ if (!studio.includes('href="./local-console.html"')) {
 if (!api.includes('https://hanyeolhui09twinx-art.github.io')) {
   throw new Error("API CORS allowlist must include the official Studio origin.");
 }
+for (const phrase of ["EXECUTION_UNKNOWN", "executed=null", "Keep this request ID", "Do not create a new ID", "setRequestLocked", 'decision==="EXECUTION_UNKNOWN"']) {
+  if (!html.includes(phrase)) throw new Error("Local Control Room must explain and preserve an unknown execution outcome: " + phrase);
+}
+if (!html.includes('["action","resource","requestId","params","newId"]')) {
+  throw new Error("Request fields and new-ID generation must remain locked until reconciliation.");
+}
 if (/Access-Control-Allow-Origin["']?\s*[,=:]\s*["']\*/.test(api)) {
   throw new Error("Wildcard CORS origin is forbidden.");
 }
