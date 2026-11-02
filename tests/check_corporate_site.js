@@ -78,7 +78,7 @@ if (/@import\s+url/i.test(css)) throw new Error("Corporate CSS must not depend o
 if (!js.includes("review.hidden=!pending")) throw new Error("Human-approval demo does not reveal its review controls.");
 if (!js.includes("data-lang-button")) throw new Error("Bilingual control handler is missing.");
 if (!js.includes('event.key==="Escape"')) throw new Error("Mobile navigation must close on Escape.");
-if (!js.includes('button.focus()')) throw new Error("Escape handling must restore focus to the menu toggle.");
+if (!js.includes('toggle.focus()')) throw new Error("Escape handling must restore focus to the menu toggle.");
 
 const security = fs.readFileSync(path.join(site, "security.html"), "utf8");
 for (const lens of ["/ASSUMPTIONS", "/BLINDSPOT", "/COUNTER", "/EDGECASE", "/SELFCRITIQUE"]) {
