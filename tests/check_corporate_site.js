@@ -246,7 +246,7 @@ vm.runInNewContext(js, {document: fakeDocument, window: {}, sessionStorage: fake
 
 demoEmail.click();
 demoRun.click();
-if (demoElements.demoDecision.textContent !== "HUMAN_APPROVAL" || demoElements.demoReview.hidden) {
+if (demoElements.demoDecision.textContent !== "인간 승인 필요" || demoElements.demoReview.hidden) {
   throw new Error("Email scenario must require a visible human approval step.");
 }
 demoApprove.click();
