@@ -173,6 +173,14 @@ if (!home.includes('href="./developers.html"') || !home.includes("Developer quic
 
   throw new Error("Platform page must show its prototype status and decision-card UI.");
 }
+const technology = fs.readFileSync(path.join(site, "technology.html"), "utf8");
+for (const phrase of ["DISPATCH PERMIT / RE-CHECK", "GUARDED MOCK ADAPTER", "Dispatch permit boundary", "15-second HMAC request-bound permit", "Production execution adapter"]) {
+  if (!technology.includes(phrase)) throw new Error("Technology page is missing the guarded adapter boundary description: " + phrase);
+}
+const threatModel = fs.readFileSync(path.join(root, "docs", "THREAT_MODEL.md"), "utf8");
+for (const phrase of ["Dispatch capability lifecycle", "HMAC-signed permit", "process-local prototype controls", "direct agent-to-tool bypass"]) {
+  if (!threatModel.includes(phrase)) throw new Error("Threat model is missing the adapter-boundary limitation: " + phrase);
+}
 const developerDocs = fs.readFileSync(path.join(site, "developers.html"), "utf8");
 for (const phrase of ['action = "send_email"', 'request_id = "docs-email-001"', '$emailResponse.approval_id', 'decision -ne "HUMAN_APPROVAL"', 'Bearer $reviewerToken', 'Bearer $agentToken', '-Body "{}"']) {
 if (!developerDocs.includes('"decision": "HUMAN_APPROVAL"') || !developerDocs.includes('"executed": false') || !developerDocs.includes('generated-by-server')) {
@@ -196,10 +204,10 @@ for (const page of ["platform.html", "technology.html", "security.html", "resear
 }
 
 const updates = fs.readFileSync(path.join(site, "updates.html"), "utf8");
-for (const phrase of ["DAY 001", "DAY 002", "DAY 003", "DAY 004", "DAY 005", "DAY 006", "DAY 007", "NOT VERIFIED", "mock execution adapter", "real-agent bypass resistance"]) {
+for (const phrase of ["DAY 001", "DAY 002", "DAY 003", "DAY 004", "DAY 005", "DAY 006", "DAY 007", "DAY 008", "NOT VERIFIED", "mock execution adapter", "real-agent bypass resistance"]) {
   if (!updates.toLowerCase().includes(phrase.toLowerCase())) throw new Error("Updates page is missing factual status item: " + phrase);
 }
-for (const log of ["day-001.md", "day-002.md", "day-003.md", "day-004.md", "day-005.md", "day-006.md", "day-007.md"]) {
+for (const log of ["day-001.md", "day-002.md", "day-003.md", "day-004.md", "day-005.md", "day-006.md", "day-007.md", "day-008.md"]) {
   if (!updates.includes(log)) throw new Error("Updates page is missing the source development log: " + log);
 }
 
