@@ -139,6 +139,16 @@ for (const outcome of ['data-en="Allow"', 'data-en="Human approval required"', '
   if (!platform.includes(outcome)) throw new Error("Platform outcome card is missing bilingual copy: " + outcome);
 }
 if (!platform.includes('class="decision-cards"') || !platform.includes("CONTROL PLANE / RESEARCH PROTOTYPE")) {
+if (!platform.includes('class="journey-grid"') || !platform.includes("01 / EXPLORE") || !platform.includes("02 / PREPARE") || !platform.includes("03 / CONNECT")) {
+  throw new Error("Platform page is missing the guided Lab → Docs → Local Control Room journey.");
+}
+for (const page of ['./lab.html', './developers.html', './local-console.html']) {
+  if (!platform.includes('href="' + page + '"')) throw new Error("Guided product journey is missing " + page);
+}
+if (!home.includes('href="./developers.html"') || !home.includes("Developer quick start")) {
+  throw new Error("Homepage prototype status must link to the developer quick start.");
+}
+
   throw new Error("Platform page must show its prototype status and decision-card UI.");
 }
 const developerDocs = fs.readFileSync(path.join(site, "developers.html"), "utf8");
