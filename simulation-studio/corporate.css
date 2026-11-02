@@ -123,3 +123,9 @@
 .journey-card b{font-size:10px;color:#c9d9d1;margin-top:auto}
 .journey-footnote{font-size:10px;line-height:1.8;color:#b6c3bf;margin:16px 0 0}
 @media(max-width:760px){.journey-grid{grid-template-columns:1fr}.journey-card{min-height:0}.journey-step{margin-bottom:14px}}
+
+.response-preview{margin:16px 0 20px;border:1px solid var(--line);background:#edf2ec;padding:16px 18px}
+.response-preview-head{display:flex;justify-content:space-between;gap:15px;color:var(--muted);font:8px var(--mono);letter-spacing:.12em}
+.response-preview-head span:last-child{color:#3f7057}
+.response-preview pre{overflow-x:auto;white-space:pre;margin:13px 0 10px;padding:14px;background:#182b35;color:#d9e8df;font:10px/1.8 var(--mono)}
+.response-preview p{margin:0;color:var(--muted);font-size:10px;line-height:1.8}
