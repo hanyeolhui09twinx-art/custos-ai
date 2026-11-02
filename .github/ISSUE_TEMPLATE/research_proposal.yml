@@ -1,0 +1,60 @@
+name: Research or collaboration proposal
+description: Suggest a technical research direction, adversarial test, or collaboration idea.
+title: "[Research]: "
+labels: ["research", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for research questions, architecture feedback, and open-source collaboration ideas. Do not post confidential information, credentials, or customer data.
+  - type: dropdown
+    id: topic
+    attributes:
+      label: Topic
+      options:
+        - Agent identity and authorization
+        - Policy engine design
+        - Human approval and accountability
+        - Multi-agent delegation
+        - Execution adapter and tool isolation
+        - Audit evidence and integrity
+        - Adversarial testing
+        - Documentation or usability
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or research question
+      description: What should Custos investigate?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed approach
+      description: Describe an architecture, experiment, or improvement.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence or reproduction
+      description: Link public references, test cases, or code that support the proposal.
+    validations:
+      required: false
+  - type: textarea
+    id: contribution
+    attributes:
+      label: Possible contribution
+      description: If proposing collaboration, describe the area where you could contribute.
+    validations:
+      required: false
+  - type: checkboxes
+    id: safe
+    attributes:
+      label: Disclosure check
+      options:
+        - label: I have not included credentials, personal data, customer information, or confidential exploit details.
+          required: true
