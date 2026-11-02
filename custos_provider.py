@@ -14,12 +14,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 from urllib.request import Request, urlopen
 
 from custos_gateway import (
-    ActionRequest, DispatchAuthorizationError, DispatchAuthority,
-    DispatchPermit, MockExecutionAdapter, canonical_json,
+    ActionRequest, DispatchAuthorizationError, DispatchAuthority, IDENTIFIER_RE,
+    REQUEST_ID_RE, DispatchPermit, MockExecutionAdapter, canonical_json,
 )
 
 MAX_BODY_BYTES = 65_536
@@ -109,12 +109,134 @@ class DurableDispatchPermitVerifier:
         return permit
 
 
+class ExecutionReceiptConflict(Exception):
+    pass
+
+
+class ExecutionReceiptInProgress(Exception):
+    pass
+
+
+class ExecutionReceiptIndeterminate(Exception):
+    pass
+
+
+class ExecutionReceiptStore:
+    """Durable at-most-once dispatch ledger keyed by authenticated agent and request ID."""
+
+    def __init__(self, db_path: str | Path, clock: Callable[[], float] = time.time) -> None:
+        self.db_path = str(db_path)
+        self._clock = clock
+        with self._connect() as conn:
+            conn.execute("""CREATE TABLE IF NOT EXISTS execution_receipts (
+                agent_id TEXT NOT NULL,
+                request_id TEXT NOT NULL,
+                request_digest TEXT NOT NULL,
+                status TEXT NOT NULL CHECK(status IN ('executing','completed','indeterminate')),
+                result_json TEXT,
+                created_at REAL NOT NULL,
+                updated_at REAL NOT NULL,
+                PRIMARY KEY(agent_id, request_id)
+            )""")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_execution_receipts_status ON execution_receipts(status, updated_at)")
+        self.recover_interrupted()
+
+    def _connect(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self.db_path, timeout=10, isolation_level=None)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=FULL")
+        return conn
+
+    def recover_interrupted(self) -> int:
+        """Never replay an operation whose side-effect outcome may be unknown."""
+        now = self._clock()
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "UPDATE execution_receipts SET status='indeterminate', updated_at=? WHERE status='executing'",
+                (now,),
+            )
+            return cursor.rowcount
+
+    def get(self, agent_id: str, request_id: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM execution_receipts WHERE agent_id=? AND request_id=?",
+                (agent_id, request_id),
+            ).fetchone()
+        if row is None:
+            return None
+        record = dict(row)
+        if record.get("result_json"):
+            record["result"] = json.loads(record.pop("result_json"))
+        else:
+            record.pop("result_json", None)
+        return record
+
+    def execute_once(
+        self,
+        request: ActionRequest,
+        executor: Callable[[ActionRequest], dict[str, Any]],
+    ) -> dict[str, Any]:
+        now = self._clock()
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT * FROM execution_receipts WHERE agent_id=? AND request_id=?",
+                (request.agent_id, request.request_id),
+            ).fetchone()
+            if row is not None:
+                conn.rollback()
+                if row["request_digest"] != request.digest:
+                    raise ExecutionReceiptConflict("request_id was already used with a different request digest.")
+                if row["status"] == "completed" and row["result_json"]:
+                    return json.loads(row["result_json"])
+                if row["status"] == "executing":
+                    raise ExecutionReceiptInProgress("This request is already being executed.")
+                raise ExecutionReceiptIndeterminate("The previous execution outcome is indeterminate; automatic replay is forbidden.")
+            conn.execute(
+                """INSERT INTO execution_receipts
+                   (agent_id, request_id, request_digest, status, created_at, updated_at)
+                   VALUES (?, ?, ?, 'executing', ?, ?)""",
+                (request.agent_id, request.request_id, request.digest, now, now),
+            )
+            conn.commit()
+
+        try:
+            result = executor(request)
+            if not isinstance(result, dict):
+                raise TypeError("Tool result must be a JSON object.")
+            result_json = canonical_json(result)
+        except Exception:
+            with self._connect() as conn:
+                conn.execute(
+                    """UPDATE execution_receipts SET status='indeterminate', updated_at=?
+                       WHERE agent_id=? AND request_id=? AND status='executing'""",
+                    (self._clock(), request.agent_id, request.request_id),
+                )
+            raise
+
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """UPDATE execution_receipts SET status='completed', result_json=?, updated_at=?
+                   WHERE agent_id=? AND request_id=? AND status='executing'""",
+                (result_json, self._clock(), request.agent_id, request.request_id),
+            )
+            if cursor.rowcount != 1:
+                raise ExecutionReceiptIndeterminate("Execution result could not be committed; outcome is indeterminate.")
+        return result
+
+
 class ToolProviderService:
     """The provider owns its tool registry; the calling agent receives no tool client."""
 
     def __init__(self, verifier: DurableDispatchPermitVerifier) -> None:
         self.verifier = verifier
+        self.receipts = ExecutionReceiptStore(verifier.db_path)
         self.adapter = MockExecutionAdapter()
+
+    def get_receipt(self, agent_id: str, request_id: str) -> dict[str, Any] | None:
+        return self.receipts.get(agent_id, request_id)
 
     def dispatch(self, payload: Any) -> dict[str, Any]:
         if not isinstance(payload, dict) or set(payload) != {"request", "permit"}:
@@ -129,8 +251,9 @@ class ToolProviderService:
             "parameters": data["parameters"], "request_id": data["request_id"],
         })
         self.verifier.consume(request, payload["permit"])
-        # MockExecutionAdapter has an exact action/resource registry and no external effects.
-        return self.adapter.execute(request)
+        # The durable receipt is claimed before the tool is invoked. An interrupted
+        # execution is never replayed automatically.
+        return self.receipts.execute_once(request, self.adapter.execute)
 
 
 class ToolProviderHTTPServer(ThreadingHTTPServer):
@@ -158,10 +281,23 @@ class ToolProviderHTTPServer(ThreadingHTTPServer):
                 self.wfile.write(body)
 
             def do_GET(self) -> None:
-                if urlsplit(self.path).path == "/health":
+                path = urlsplit(self.path).path
+                if path == "/health":
                     self._send(200, {"status": "ok", "service": "custos-tool-provider", "mode": "mock"})
-                else:
-                    self._send(404, {"error": "Not found."})
+                    return
+                parts = path.split("/")
+                if len(parts) == 5 and parts[1:3] == ["v1", "receipts"]:
+                    agent_id, request_id = parts[3], parts[4]
+                    if not IDENTIFIER_RE.fullmatch(agent_id) or not REQUEST_ID_RE.fullmatch(request_id):
+                        self._send(400, {"error": "Invalid receipt identifier."})
+                        return
+                    receipt = self.server.service.get_receipt(agent_id, request_id)  # type: ignore[attr-defined]
+                    if receipt is None:
+                        self._send(404, {"error": "Execution receipt not found."})
+                    else:
+                        self._send(200, {"receipt": receipt})
+                    return
+                self._send(404, {"error": "Not found."})
 
             def do_POST(self) -> None:
                 if urlsplit(self.path).path != PROVIDER_PATH:
@@ -181,7 +317,11 @@ class ToolProviderHTTPServer(ThreadingHTTPServer):
                     result = self.server.service.dispatch(payload)  # type: ignore[attr-defined]
                     self._send(200, {"result": result})
                 except DispatchAuthorizationError:
-                    self._send(403, {"error": "Dispatch authorization rejected."})
+                    self._send(403, {"error": "Dispatch authorization rejected.", "code": "dispatch_denied"})
+                except ExecutionReceiptConflict:
+                    self._send(409, {"error": "Request ID conflicts with a different request digest.", "code": "idempotency_conflict"})
+                except (ExecutionReceiptInProgress, ExecutionReceiptIndeterminate):
+                    self._send(409, {"error": "Execution outcome is not yet safely repeatable.", "code": "execution_outcome_unknown"})
                 except (UnicodeDecodeError, json.JSONDecodeError, RecursionError, ValueError):
                     self._send(400, {"error": "Malformed or unsupported provider request."})
                 except Exception:
@@ -199,9 +339,9 @@ def create_provider_server(
 ) -> ToolProviderHTTPServer:
     if host != "127.0.0.1":
         raise ValueError("The mock provider only binds to loopback.")
-    return ToolProviderHTTPServer(
-        (host, port), ToolProviderService(DurableDispatchPermitVerifier(db_path, signing_key))
-    )
+    verifier = DurableDispatchPermitVerifier(db_path, signing_key)
+    service = ToolProviderService(verifier)
+    return ToolProviderHTTPServer((host, port), service)
 
 
 class HttpToolProviderAdapter:
@@ -233,14 +373,42 @@ class HttpToolProviderAdapter:
             with urlopen(outbound, timeout=self.timeout_seconds) as response:
                 result = json.loads(response.read(MAX_BODY_BYTES + 1).decode("utf-8"))
         except HTTPError as exc:
+            try:
+                error_payload = json.loads(exc.read(MAX_BODY_BYTES + 1).decode("utf-8"))
+            except Exception:
+                error_payload = {}
+            if exc.code == 409 and isinstance(error_payload, dict) and error_payload.get("code") == "execution_outcome_unknown":
+                from custos_gateway import DispatchOutcomeUnknown
+                raise DispatchOutcomeUnknown("Provider reports an in-progress or indeterminate execution.") from exc
             if 400 <= exc.code < 500:
                 raise DispatchAuthorizationError("Provider rejected dispatch.") from exc
-            raise RuntimeError("Provider execution failed.") from exc
-        except (URLError, TimeoutError, OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise DispatchAuthorizationError("Provider unavailable; dispatch failed closed.") from exc
+            from custos_gateway import DispatchOutcomeUnknown
+            raise DispatchOutcomeUnknown("Provider returned a server error after dispatch was submitted.") from exc
+        except (URLError, TimeoutError, OSError) as exc:
+            from custos_gateway import DispatchOutcomeUnknown
+            raise DispatchOutcomeUnknown("Provider response was lost; execution outcome is unknown.") from exc
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            from custos_gateway import DispatchOutcomeUnknown
+            raise DispatchOutcomeUnknown("Provider response could not be interpreted; execution outcome is unknown.") from exc
         if not isinstance(result, dict) or set(result) != {"result"} or not isinstance(result["result"], dict):
-            raise RuntimeError("Provider returned an invalid response.")
+            from custos_gateway import DispatchOutcomeUnknown
+            raise DispatchOutcomeUnknown("Provider returned an invalid response after dispatch.")
         return result["result"]
+
+    def get_receipt(self, agent_id: str, request_id: str) -> dict[str, Any] | None:
+        url = self.endpoint.rsplit(PROVIDER_PATH, 1)[0] + "/v1/receipts/" + quote(agent_id, safe="") + "/" + quote(request_id, safe="")
+        try:
+            with urlopen(url, timeout=self.timeout_seconds) as response:
+                payload = json.loads(response.read(MAX_BODY_BYTES + 1).decode("utf-8"))
+        except HTTPError as exc:
+            if exc.code == 404:
+                return None
+            raise RuntimeError("Provider receipt lookup failed.") from exc
+        except (URLError, TimeoutError, OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RuntimeError("Provider receipt lookup is unavailable.") from exc
+        if not isinstance(payload, dict) or set(payload) != {"receipt"} or not isinstance(payload["receipt"], dict):
+            raise RuntimeError("Provider returned an invalid receipt response.")
+        return payload["receipt"]
 
 
 def main() -> None:
