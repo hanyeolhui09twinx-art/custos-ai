@@ -178,7 +178,7 @@ for (const phrase of ["DISPATCH PERMIT / RE-CHECK", "MOCK TOOL PROVIDER + RECEIP
   if (!technology.includes(phrase)) throw new Error("Technology page is missing the guarded adapter boundary description: " + phrase);
 }
 const threatModel = fs.readFileSync(path.join(root, "docs", "THREAT_MODEL.md"), "utf8");
-for (const phrase of ["Dispatch capability lifecycle", "HMAC-signed permit", "in-memory consumer", "no key rotation, KMS", "direct agent-to-real-tool bypass", "same-host process separation", "unregistered action/resource pairs", "indeterminate", "never automatically replayed", "at-most-once provider invocation"]) {
+for (const phrase of ["Dispatch capability lifecycle", "HMAC-signed permit", "in-memory consumer", "no key rotation, KMS", "direct agent-to-real-tool bypass", "same-host process separation", "unregistered action/resource pairs", "indeterminate", "never automatically replayed", "at-most-once local dispatch behavior"]) {
   if (!threatModel.includes(phrase)) throw new Error("Threat model is missing the adapter-boundary limitation: " + phrase);
 }
 const developerDocs = fs.readFileSync(path.join(site, "developers.html"), "utf8");
