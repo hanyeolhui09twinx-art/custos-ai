@@ -1,23 +1,23 @@
-# Custos AI — Public Website, Simulation Lab, and Local Control Room
+# Custos AI — Corporate Website, Simulation Lab, and Local Control Room
 
 ## Corporate website
 
-The main GitHub Pages entry point is the corporate website:
+The main GitHub Pages entry point is the bilingual corporate website:
 
 https://hanyeolhui09twinx-art.github.io/custos-ai/
 
-The site has dedicated pages for:
-
-- Home — project overview, control architecture, and a client-side policy concept demo
+It contains dedicated pages for:
+- Home — project overview, control architecture, and interactive policy concept demo
 - Platform — request validation, policy decisions, approvals, idempotency, and audit
 - Technology — identity, scope, policy, dispatch revalidation, and implementation status
-- Security & Trust — implemented controls and the five-lens threat model
-- Research — research questions, roadmap, and development records
+- Security & Trust — implemented controls, limitations, and the five-lens threat model
+- Research — research questions, roadmap, and engineering records
 - About — project purpose and current prototype status
-- Contact — GitHub-based feedback and collaboration
-- Privacy — current static site and browser-tool data handling
+- Contact — structured bug reports and research/collaboration proposals
+- Privacy — data handling for the static site and browser tools
+- Terms of Use — usage boundaries and prototype limitations
 
-The corporate site is static HTML/CSS/JavaScript. It is not a hosted backend or a commercial SaaS service.
+The corporate site is static HTML/CSS/JavaScript. It has no hosted application backend and is not a commercial SaaS service.
 
 ## Simulation Lab
 
@@ -61,4 +61,12 @@ Tokens are not intentionally persisted by the console, but the public page is st
 - The hosted Simulation Lab and corporate website do not run the Python backend.
 - The current prototype is not production security software.
 
-See the root README for API routes and `docs/THREAT_MODEL.md` for assumptions, blind spots, counterarguments, edge cases, and self-critique.
+## Feedback and collaboration
+
+The Contact page links to structured GitHub issue forms for:
+- Reproducible bug reports (steps, expected behavior, actual behavior, environment)
+- Research and collaboration proposals (question, approach, evidence, and contribution area)
+
+Public issues must not contain credentials, customer data, or confidential information.
+
+See the root README for API routes and docs/THREAT_MODEL.md for assumptions, blind spots, counterarguments, edge cases, and self-critique.
