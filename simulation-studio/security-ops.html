@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="./favicon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#0a1018">
+<link rel="canonical" href="https://hanyeolhui09twinx-art.github.io/custos-ai/security-ops.html">
+<meta name="description" content="Read-only local key-ring status and sanitized lifecycle audit events for the Custos AI research prototype.">
+<meta property="og:type" content="website"><meta property="og:title" content="Custos AI — Security Operations"><meta property="og:description" content="Reviewer-authenticated, read-only key-ring observability for the local Custos prototype."><meta property="og:url" content="https://hanyeolhui09twinx-art.github.io/custos-ai/security-ops.html">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src http://127.0.0.1:8765 http://localhost:8765; base-uri 'none'; form-action 'none'">
+<title>Custos AI — Security Operations</title>
+<style>
+:root{color-scheme:dark;--bg:#09111a;--panel:#101d29;--panel2:#142536;--line:#294051;--text:#e9f1f3;--muted:#9aadb8;--cyan:#62d9d5;--green:#79d9a8;--yellow:#efc776;--red:#ff828b;--blue:#8fb8ff}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(900px 520px at 78% -14%,#264a5d55,transparent 62%),var(--bg);color:var(--text);font:14px/1.55 Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans KR",sans-serif}
+a{color:var(--cyan);text-decoration:none}a:hover{text-decoration:underline}
+.wrap{max-width:1200px;margin:auto;padding:26px 22px 60px}
+header{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:34px}
+.brand{display:flex;align-items:center;gap:12px;color:var(--text)}.mark{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;background:linear-gradient(145deg,#4ad3dc,#668cff);color:#07131c;font-size:21px;font-weight:900}.brand strong{letter-spacing:.15em}.brand small{display:block;color:var(--muted);font:9px/1.5 ui-monospace,monospace;letter-spacing:.16em}
+.head-actions{display:flex;align-items:center;gap:9px}.tag{border:1px solid var(--line);border-radius:30px;padding:6px 10px;color:var(--muted);font-size:10px;letter-spacing:.08em}
+.lang button,button{border:1px solid #365168;background:#1a2b3e;color:var(--text);border-radius:9px;padding:9px 12px;font-weight:650;cursor:pointer}.lang button{padding:6px 9px;color:var(--muted);background:transparent}.lang button.active{color:var(--cyan);border-color:var(--cyan)}
+button:hover{border-color:var(--cyan)}button.primary{background:linear-gradient(120deg,#2d8f99,#426fc0);border:0;color:white}button:disabled{opacity:.5;cursor:not-allowed}
+.eyebrow{font:10px ui-monospace,monospace;letter-spacing:.17em;color:var(--cyan);text-transform:uppercase}
+h1{font-size:clamp(30px,5vw,48px);letter-spacing:-.045em;line-height:1.06;margin:13px 0 12px}.intro{max-width:790px;color:var(--muted);font-size:14px;margin:0 0 24px}
+.notice{border:1px solid #675431;background:#282216;color:#f0dcaa;padding:13px 15px;border-radius:11px;font-size:12px;margin:18px 0 20px}
+.panel{background:linear-gradient(180deg,#122130,#0e1924);border:1px solid var(--line);border-radius:16px;padding:19px;min-width:0}
+.connect{display:grid;grid-template-columns:minmax(220px,1fr) minmax(260px,1.2fr) auto auto;gap:12px;align-items:end}
+label{display:block;color:var(--muted);font-size:11px;margin:0 0 6px}
+input,select{width:100%;min-width:0;border:1px solid #31495d;background:#091521;color:var(--text);padding:10px 11px;border-radius:9px;outline:none}
+input:focus,select:focus{border-color:var(--cyan);box-shadow:0 0 0 2px #62d9d522}
+.connection-state{margin-top:12px;color:var(--muted);font-size:12px;min-height:18px}.connection-state.ok{color:var(--green)}.connection-state.bad{color:var(--red)}
+.summary{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:16px 0}
+.component-head{display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:1px solid var(--line);padding-bottom:13px;margin-bottom:15px}
+.component-head h2{font-size:15px;margin:0}.status-chip{border:1px solid var(--line);border-radius:30px;padding:4px 8px;font:9px ui-monospace,monospace;color:var(--muted);letter-spacing:.06em}.status-chip.good{color:var(--green);border-color:#3d785d}.status-chip.bad{color:var(--red);border-color:#854852}.status-chip.warn{color:var(--yellow);border-color:#78623a}
+.integrity{font-size:11px;color:var(--muted);margin-bottom:16px}
+.active-key{background:#0a1620;border:1px solid #294252;border-radius:10px;padding:13px;margin-bottom:13px}.active-key span{display:block;color:var(--muted);font:9px ui-monospace,monospace;letter-spacing:.14em}.active-key strong{display:block;font:600 17px ui-monospace,monospace;overflow-wrap:anywhere;margin-top:5px}
+.key-section{margin-top:10px}.key-section label{font:9px ui-monospace,monospace;letter-spacing:.12em}.key-list{display:flex;flex-wrap:wrap;gap:7px;min-height:22px}.key-pill{border:1px solid #375365;background:#132637;color:#d7e8eb;border-radius:7px;padding:4px 8px;font:10px ui-monospace,monospace;overflow-wrap:anywhere}.key-pill.active{border-color:#3c8666;color:var(--green)}.key-pill.revoked{border-color:#854852;color:#ff9ca4;text-decoration:line-through}
+.filters{display:grid;grid-template-columns:1fr 1.4fr .6fr auto;gap:12px;align-items:end;margin-bottom:14px}
+.audit-head{display:flex;justify-content:space-between;align-items:center;gap:15px;margin:0 0 15px}.audit-head h2{margin:0;font-size:17px}.count{font:10px ui-monospace,monospace;color:var(--muted)}
+.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:11px}
+table{width:100%;border-collapse:collapse;min-width:680px;font-size:12px}
+th{text-align:left;color:#9fb5bd;background:#0a1722;font:9px ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase}
+td,th{padding:12px;border-bottom:1px solid #233747;vertical-align:top}
+tbody tr:last-child td{border-bottom:0}td.time{white-space:nowrap;color:var(--muted);font:10px ui-monospace,monospace}td.event{font:10px ui-monospace,monospace;color:var(--cyan)}td.detail{color:#c6d6dc;overflow-wrap:anywhere}
+.empty{padding:28px;text-align:center;color:var(--muted);font-size:12px}
+.foot{font-size:11px;color:#8197a4;line-height:1.8;margin-top:18px}.foot strong{color:#bdccd2}
+@media(max-width:850px){.connect{grid-template-columns:1fr 1fr}.filters{grid-template-columns:1fr 1fr}.summary{grid-template-columns:1fr}}
+@media(max-width:560px){.wrap{padding:18px 12px 40px}header{align-items:flex-start}.head-actions{flex-wrap:wrap;justify-content:flex-end}.tag{display:none}.connect,.filters{grid-template-columns:1fr}.connect button,.filters button{width:100%}.panel{padding:14px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+ <a class="brand" href="./index.html"><span class="mark">C</span><span><strong>CUSTOS AI</strong><small>SECURITY OPERATIONS · READ ONLY</small></span></a>
+ <div class="head-actions"><span class="tag">REVIEWER AUTH · LOCAL API</span><div class="lang"><button id="ko" class="active" type="button">한국어</button><button id="en" type="button">EN</button></div></div>
+</header>
+<main>
+ <div class="eyebrow" id="eyebrow">01 / KEY RING OBSERVABILITY</div>
+ <h1 id="title">보안 운영 관측</h1>
+ <p class="intro" id="intro">로컬 Custos API에서 게이트웨이와 프로바이더의 관측된 키링 상태 및 검증된 수명주기 감사 이벤트를 조회합니다. 이 화면은 읽기 전용이며 키를 추가·변경·폐기하지 않습니다.</p>
+ <div class="notice" id="boundary">이 화면에 표시되는 상태는 각 프로세스가 마지막으로 시작되어 SQLite에 기록한 설정입니다. 환경 설정 변경은 프로세스 재시작 전까지 효력이 없습니다. 키 원문과 지문은 조회 API가 반환하지 않습니다.</div>
+
+ <section class="panel" aria-labelledby="connectTitle">
+  <div class="eyebrow" id="connectTitle">02 / LOCAL CONNECTION</div>
+  <div class="connect" style="margin-top:13px">
+   <div><label for="endpoint" id="endpointLabel">로컬 API 주소</label><input id="endpoint" value="http://127.0.0.1:8765" spellcheck="false"></div>
+   <div><label for="reviewerToken" id="tokenLabel">검토자 Bearer 토큰</label><input id="reviewerToken" type="password" autocomplete="off" placeholder="로컬 검토자 토큰을 입력"></div>
+   <button class="primary" id="loadBtn" type="button">연결 및 조회</button>
+   <button id="clearBtn" type="button">토큰 지우기</button>
+  </div>
+  <div class="connection-state" id="connectionState" role="status" aria-live="polite">아직 연결하지 않았습니다.</div>
+ </section>
+
+ <section class="summary" aria-label="Key ring status">
+  <article class="panel">
+   <div class="component-head"><h2 id="gatewayTitle">Gateway · 게이트웨이</h2><span class="status-chip" id="gatewayStatus">NOT LOADED</span></div>
+   <div class="integrity" id="gatewayIntegrity">Audit integrity · —</div>
+   <div class="active-key"><span id="gatewayActiveLabel">ACTIVE KEY ID</span><strong id="gatewayActive">—</strong></div>
+   <div class="key-section"><label id="gatewayAcceptedLabel">ACCEPTED KEY IDS</label><div class="key-list" id="gatewayAccepted"><span class="count">—</span></div></div>
+   <div class="key-section"><label id="gatewayRevokedLabel">OBSERVED REVOKED IDS</label><div class="key-list" id="gatewayRevoked"><span class="count">—</span></div></div>
+  </article>
+  <article class="panel">
+   <div class="component-head"><h2 id="providerTitle">Provider · 프로바이더</h2><span class="status-chip" id="providerStatus">NOT LOADED</span></div>
+   <div class="integrity" id="providerIntegrity">Audit integrity · —</div>
+   <div class="active-key"><span id="providerActiveLabel">ACTIVE KEY ID</span><strong id="providerActive">—</strong></div>
+   <div class="key-section"><label id="providerAcceptedLabel">ACCEPTED KEY IDS</label><div class="key-list" id="providerAccepted"><span class="count">—</span></div></div>
+   <div class="key-section"><label id="providerRevokedLabel">OBSERVED REVOKED IDS</label><div class="key-list" id="providerRevoked"><span class="count">—</span></div></div>
+  </article>
+ </section>
+
+ <section class="panel">
+  <div class="audit-head"><h2 id="auditTitle">03 / 키 수명주기 감사 이벤트</h2><span class="count" id="eventCount">0 EVENTS</span></div>
+  <div class="filters">
+   <div><label for="componentFilter" id="componentLabel">구성 요소</label><select id="componentFilter"><option value="all">All components</option><option value="gateway">Gateway</option><option value="provider">Provider</option></select></div>
+   <div><label for="eventFilter" id="eventLabel">이벤트 유형</label><select id="eventFilter">
+    <option value="">All key events</option>
+    <option value="DISPATCH_KEYRING_INITIALIZED">KEYRING_INITIALIZED</option>
+    <option value="DISPATCH_KEYRING_LOADED">KEYRING_LOADED</option>
+    <option value="DISPATCH_KEY_REGISTERED">KEY_REGISTERED</option>
+    <option value="DISPATCH_KEY_ACTIVATED">KEY_ACTIVATED</option>
+    <option value="DISPATCH_KEY_REVOKED">KEY_REVOKED</option>
+    <option value="DISPATCH_KEY_REPLACED">KEY_REPLACED</option>
+   </select></div>
+   <div><label for="limitFilter" id="limitLabel">최대 이벤트</label><select id="limitFilter"><option>25</option><option selected>100</option><option>200</option></select></div>
+   <button id="refreshBtn" type="button">필터 적용 · 새로고침</button>
+  </div>
+  <div class="table-wrap">
+   <table>
+    <thead><tr><th id="timeHeader">TIMESTAMP</th><th id="componentHeader">COMPONENT</th><th id="eventHeader">EVENT</th><th id="detailHeader">DETAIL</th></tr></thead>
+    <tbody id="eventRows"><tr><td class="empty" colspan="4" id="emptyEvents">인증 후 감사 이벤트를 조회하세요.</td></tr></tbody>
+   </table>
+  </div>
+ </section>
+ <p class="foot" id="foot"><strong>보안 경계:</strong> 감사 무결성은 로컬 해시 체인 검증 결과이며 원격 불변 저장소나 독립 서명 검증이 아닙니다. 관측 기록은 이 기능이 처음 배포된 이후의 시작 시점 변경만 보여 줍니다. 이미 프로바이더가 수락한 실행은 키 폐기로 취소되지 않습니다. 이 프로토타입은 실제 도구를 연결하지 않습니다.</p>
+ <p class="foot"><a href="./local-console.html" id="consoleLink">← Local Control Room</a> · <a href="./developers.html" id="docsLink">Developer Guide</a> · <a href="./index.html" id="homeLink">Custos AI</a> · <a href="https://github.com/hanyeolhui09twinx-art/custos-ai" target="_blank" rel="noopener noreferrer">GitHub ↗</a></p>
+</main>
+</div>
+<script>
+(function(){
+"use strict";
+const $=id=>document.getElementById(id);
+let lang="ko";
+const words={
+ ko:{
+ title:"보안 운영 관측",intro:"로컬 Custos API에서 게이트웨이와 프로바이더의 관측된 키링 상태 및 검증된 수명주기 감사 이벤트를 조회합니다. 이 화면은 읽기 전용이며 키를 추가·변경·폐기하지 않습니다.",
+ boundary:"이 화면에 표시되는 상태는 각 프로세스가 마지막으로 시작되어 SQLite에 기록한 설정입니다. 환경 설정 변경은 프로세스 재시작 전까지 효력이 없습니다. 키 원문과 지문은 조회 API가 반환하지 않습니다.",
+ connectTitle:"02 / 로컬 연결",endpointLabel:"로컬 API 주소",tokenLabel:"검토자 Bearer 토큰",loadBtn:"연결 및 조회",clearBtn:"토큰 지우기",notConnected:"아직 연결하지 않았습니다.",loading:"보안 상태 조회 중…",loaded:"읽기 전용 보안 상태를 불러왔습니다.",failed:"조회 실패: ",
+ gatewayTitle:"Gateway · 게이트웨이",providerTitle:"Provider · 프로바이더",active:"활성 키 ID",accepted:"현재 허용 키 ID",revoked:"감사 로그에서 관측된 폐기 ID",audit:"감사 체인 무결성",auditValid:"유효",auditMissing:"로그 없음",auditInvalid:"무결성 오류",auditTooLarge:"조회 한도 초과",tracked:"추적 중",notTracked:"추적 데이터 없음",
+ auditTitle:"03 / 키 수명주기 감사 이벤트",component:"구성 요소",event:"이벤트 유형",limit:"최대 이벤트",refresh:"필터 적용 · 새로고침",time:"시각",componentHead:"구성 요소",eventHead:"이벤트",detail:"세부 정보",empty:"조건에 맞는 키 수명주기 이벤트가 없습니다.",authenticate:"검토자 토큰을 입력하세요.",badEndpoint:"주소는 http이며 localhost 또는 127.0.0.1이어야 합니다.",noActive:"활성 키 없음",none:"없음",unknown:"알 수 없음",
+ foot:"보안 경계: 감사 무결성은 로컬 해시 체인 검증 결과이며 원격 불변 저장소나 독립 서명 검증이 아닙니다. 관측 기록은 이 기능이 처음 배포된 이후의 시작 시점 변경만 보여 줍니다. 이미 프로바이더가 수락한 실행은 키 폐기로 취소되지 않습니다. 이 프로토타입은 실제 도구를 연결하지 않습니다.",
+ consoleLink:"← Local Control Room",docsLink:"Developer Guide",homeLink:"Custos AI",allComponents:"전체 구성 요소",allEvents:"전체 키 이벤트",readOnly:"읽기 전용",emptyInitial:"인증 후 감사 이벤트를 조회하세요."
+ },
+ en:{
+ title:"Security Operations",intro:"Inspect observed gateway and provider key-ring state plus verified lifecycle events from your local Custos API. This page is read-only; it cannot add, activate, or revoke keys.",
+ boundary:"The displayed state is the last configuration observed at process startup and persisted in SQLite. Environment changes do not take effect until the process restarts. The read API never returns raw key material or fingerprints.",
+ connectTitle:"02 / LOCAL CONNECTION",endpointLabel:"Local API endpoint",tokenLabel:"Reviewer Bearer token",loadBtn:"Connect & load",clearBtn:"Clear token",notConnected:"Not connected.",loading:"Loading security overview…",loaded:"Read-only security overview loaded.",failed:"Load failed: ",
+ gatewayTitle:"Gateway",providerTitle:"Provider",active:"ACTIVE KEY ID",accepted:"CURRENTLY ACCEPTED KEY IDS",revoked:"REVOKED IDS OBSERVED IN AUDIT",audit:"Audit-chain integrity",auditValid:"valid",auditMissing:"missing",auditInvalid:"invalid",auditTooLarge:"over size limit",tracked:"tracked",notTracked:"not tracked",
+ auditTitle:"03 / KEY LIFECYCLE AUDIT EVENTS",component:"Component",event:"Event type",limit:"Maximum events",refresh:"Apply filters · Refresh",time:"TIMESTAMP",componentHead:"COMPONENT",eventHead:"EVENT",detail:"DETAIL",empty:"No key lifecycle events match these filters.",authenticate:"Enter the reviewer token.",badEndpoint:"Endpoint must use http and point to localhost or 127.0.0.1.",noActive:"No active key",none:"None",unknown:"Unknown",
+ foot:"Security boundary: audit integrity is a local hash-chain check, not remote immutable storage or independent signature verification. History covers startup-time changes observed after this feature was first deployed. Key revocation cannot cancel a provider action already accepted. This prototype does not connect real tools.",
+ consoleLink:"← Local Control Room",docsLink:"Developer Guide",homeLink:"Custos AI",allComponents:"All components",allEvents:"All key events",readOnly:"READ ONLY",emptyInitial:"Connect with reviewer credentials to load audit events."
+ }}
+function setLanguage(next){
+ lang=next==="en"?"en":"ko";
+ document.documentElement.lang=lang;
+ const t=words[lang];
+ const mapping={
+ title:"title",intro:"intro",boundary:"boundary",connectTitle:"connectTitle",endpointLabel:"endpointLabel",tokenLabel:"tokenLabel",loadBtn:"loadBtn",clearBtn:"clearBtn",
+ gatewayTitle:"gatewayTitle",providerTitle:"providerTitle",auditTitle:"auditTitle",componentLabel:"component",eventLabel:"event",limitLabel:"limit",refreshBtn:"refresh",timeHeader:"time",componentHeader:"componentHead",eventHeader:"eventHead",detailHeader:"detail",foot:"foot",consoleLink:"consoleLink",docsLink:"docsLink",homeLink:"homeLink"
+ };
+ Object.keys(mapping).forEach(id=>$(id).textContent=t[mapping[id]]);
+ $("componentFilter").options[0].textContent=t.allComponents;
+ $("eventFilter").options[0].textContent=t.allEvents;
+ $("ko").classList.toggle("active",lang==="ko");$("en").classList.toggle("active",lang==="en");
+}
+function baseUrl(){
+ let u;
+ try{u=new URL($("endpoint").value.trim())}catch(e){throw new Error(words[lang].badEndpoint)}
+ if(u.protocol!=="http:"||!["127.0.0.1","localhost","[::1]","::1"].includes(u.hostname))throw new Error(words[lang].badEndpoint);
+ return u.origin;
+}
+function setConnection(message,kind){
+ $("connectionState").textContent=message;
+ $("connectionState").className="connection-state"+(kind?" "+kind:"");
+}
+async function fetchOverview(){
+ const token=$("reviewerToken").value.trim();
+ if(!token)throw new Error(words[lang].authenticate);
+ const params=new URLSearchParams({
+  component:$("componentFilter").value,
+  limit:$("limitFilter").value
+ });
+ if($("eventFilter").value)params.set("event",$("eventFilter").value);
+ const url=baseUrl()+"/v1/security/overview?"+params.toString();
+ let response;
+ try{
+  response=await fetch(url,{method:"GET",mode:"cors",targetAddressSpace:"loopback",headers:{Authorization:"Bearer "+token},cache:"no-store"});
+ }catch(e){throw new Error("Network/CORS or Loopback permission: "+e.message)}
+ let payload={};
+ try{payload=await response.json()}catch(e){payload={error:"Non-JSON response"}}
+ if(!response.ok)throw new Error(response.status+" "+(payload.error||response.statusText));
+ return payload;
+}
+function addPills(target,ids,activeId,kind){
+ target.replaceChildren();
+ if(!ids||!ids.length){const span=document.createElement("span");span.className="count";span.textContent=words[lang].none;target.appendChild(span);return}
+ ids.forEach(id=>{
+  const pill=document.createElement("span");pill.className="key-pill"+(kind==="revoked"?" revoked":id===activeId?" active":"");
+  pill.textContent=id;target.appendChild(pill);
+ });
+}
+function renderComponent(name,state){
+ const prefix=name==="gateway"?"gateway":"provider";
+ const status=$(prefix+"Status"),integrity=$(prefix+"Integrity");
+ status.className="status-chip";
+ if(!state||state.status!=="tracked"){status.textContent=words[lang].notTracked;status.classList.add("warn")}
+ else{status.textContent=words[lang].tracked;status.classList.add("good")}
+ const integrityText=state?state.audit_integrity:"missing";
+ const integrityLabel={valid:words[lang].auditValid,missing:words[lang].auditMissing,invalid:words[lang].auditInvalid,too_large:words[lang].auditTooLarge}[integrityText]||words[lang].unknown;
+ integrity.textContent=words[lang].audit+" · "+integrityLabel;
+ integrity.style.color=integrityText==="valid"?"var(--green)":integrityText==="invalid"||integrityText==="too_large"?"var(--red)":"var(--yellow)";
+ $(prefix+"Active").textContent=state&&state.active_key_id||words[lang].noActive;
+ addPills($(prefix+"Accepted"),state&&state.accepted_key_ids,state&&state.active_key_id,"accepted");
+ addPills($(prefix+"Revoked"),state&&state.revoked_key_ids,null,"revoked");
+}
+function detailFor(event){
+ const d=[];
+ if(event.key_ids)d.push("keys: "+event.key_ids.join(", "));
+ if(event.key_id)d.push("key_id: "+event.key_id);
+ if(event.previous_active_key_id||event.active_key_id)d.push((event.previous_active_key_id||"—")+" → "+(event.active_key_id||"—"));
+ if(event.reason)d.push("reason: "+event.reason);
+ if(event.same_id_material_changed)d.push("same ID / key material changed");
+ return d.join(" · ")||"—";
+}
+function renderEvents(events){
+ const body=$("eventRows");body.replaceChildren();
+ $("eventCount").textContent=(events||[]).length+" EVENTS";
+ if(!events||!events.length){
+  const row=document.createElement("tr"),cell=document.createElement("td");
+  cell.colSpan=4;cell.className="empty";cell.textContent=words[lang].empty;row.appendChild(cell);body.appendChild(row);return;
+ }
+ events.forEach(event=>{
+  const row=document.createElement("tr");
+  const time=document.createElement("td");time.className="time";
+  const stamp=Date.parse(event.timestamp||"");
+  time.textContent=Number.isFinite(stamp)?new Date(stamp).toLocaleString():String(event.timestamp||"—");
+  const component=document.createElement("td");component.textContent=event.component||"—";
+  const type=document.createElement("td");type.className="event";type.textContent=event.event||"—";
+  const detail=document.createElement("td");detail.className="detail";detail.textContent=detailFor(event);
+  row.append(time,component,type,detail);body.appendChild(row);
+ });
+}
+let cached=null;
+async function load(){
+ $("loadBtn").disabled=true;$("refreshBtn").disabled=true;setConnection(words[lang].loading);
+ try{
+  const result=await fetchOverview();cached=result;
+  renderComponent("gateway",result.components&&result.components.gateway);
+  renderComponent("provider",result.components&&result.components.provider);
+  renderEvents(result.events||[]);
+  setConnection(words[lang].loaded,"ok");
+ }catch(e){setConnection(words[lang].failed+e.message,"bad")}
+ finally{$("loadBtn").disabled=false;$("refreshBtn").disabled=false}
+}
+$("ko").addEventListener("click",()=>{setLanguage("ko");if(cached){renderComponent("gateway",cached.components.gateway);renderComponent("provider",cached.components.provider);renderEvents(cached.events)}});
+$("en").addEventListener("click",()=>{setLanguage("en");if(cached){renderComponent("gateway",cached.components.gateway);renderComponent("provider",cached.components.provider);renderEvents(cached.events)}});
+$("loadBtn").addEventListener("click",load);$("refreshBtn").addEventListener("click",load);
+$("clearBtn").addEventListener("click",()=>{$("reviewerToken").value="";cached=null;setConnection(lang==="ko"?"이 페이지에서 검토자 토큰을 지웠습니다.":"Reviewer token cleared from this page.");renderEvents([]);});
+setLanguage("ko");
+$("emptyEvents").textContent=words[lang].emptyInitial;
+})();
+</script>
+</body>
+</html>
