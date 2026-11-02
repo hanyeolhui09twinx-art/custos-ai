@@ -130,6 +130,16 @@ $execution = Invoke-RestMethod -Method Post `
   -ContentType "application/json" `
   -Body "{}"
 $execution</code></pre></div>
+<div class="response-preview">
+ <div class="response-preview-head"><span>EXPECTED RESPONSE / POST /v1/requests</span><span>HTTP 200</span></div>
+ <pre><code>{
+  "decision": "HUMAN_APPROVAL",
+  "executed": false,
+  "approval_id": "generated-by-server",
+  "request_id": "docs-email-001"
+}</code></pre>
+ <p data-ko="HTTP 200은 요청이 정상적으로 접수되고 판정됐다는 뜻입니다. 승인 완료나 외부 행동 실행을 뜻하지 않습니다. approval_id가 있어야 다음 Reviewer 단계로 진행할 수 있습니다." data-en="HTTP 200 means the request was received and evaluated. It does not mean approval or external execution is complete. Continue to the Reviewer step only when an approval_id is returned.">HTTP 200은 요청이 정상적으로 접수되고 판정됐다는 뜻입니다. 승인 완료나 외부 행동 실행을 뜻하지 않습니다. approval_id가 있어야 다음 Reviewer 단계로 진행할 수 있습니다.</p>
+</div>
 <p class="form-note" data-ko="이 흐름의 실행 어댑터는 MockExecutionAdapter입니다. 응답은 simulated 결과이며 이메일이 발송되지 않습니다. 실행 중 프로세스 충돌 시 자동 복구도 구현되어 있지 않습니다." data-en="This flow uses MockExecutionAdapter. The response is simulated; no email is sent. Automatic recovery after a process crash during execution is not implemented.">이 흐름의 실행 어댑터는 MockExecutionAdapter입니다. 응답은 simulated 결과이며 이메일이 발송되지 않습니다. 실행 중 프로세스 충돌 시 자동 복구도 구현되어 있지 않습니다.</p>
 <p class="form-note" data-ko="승인 단계는 요청 스냅샷과 연결됩니다. Reviewer는 승인 또는 거부할 수 있으며, 실행은 원래 요청한 Agent 토큰으로 한 번만 시도할 수 있습니다. 실제 실행 결과는 mock adapter의 시뮬레이션 응답입니다." data-en="The approval is bound to the request snapshot. A reviewer can approve or deny it, and execution can be attempted once using the original requesting Agent token. The execution result is a simulation response from the mock adapter.">승인 단계는 요청 스냅샷과 연결됩니다. Reviewer는 승인 또는 거부할 수 있으며, 실행은 원래 요청한 Agent 토큰으로 한 번만 시도할 수 있습니다. 실제 실행 결과는 mock adapter의 시뮬레이션 응답입니다.</p>
 <div class="table-wrap"><table><thead><tr><th>METHOD</th><th>PATH</th><th>AUTH</th><th>DESCRIPTION</th></tr></thead><tbody>
