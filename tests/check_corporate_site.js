@@ -6,7 +6,7 @@ const root = path.resolve(__dirname, "..");
 const site = path.join(root, "simulation-studio");
 const corporatePages = [
   "index.html", "platform.html", "technology.html", "security.html",
-  "research.html", "company.html", "contact.html", "privacy.html", "terms.html", "404.html"
+  "research.html", "company.html", "contact.html", "privacy.html", "terms.html", "updates.html", "404.html"
 ];
 const toolPages = ["lab.html", "local-console.html"];
 const allPages = [...corporatePages, ...toolPages];
@@ -131,7 +131,7 @@ const home = fs.readFileSync(path.join(site, "index.html"), "utf8");
 if (!home.includes('role="status" aria-live="polite"')) throw new Error("Policy demo decision must be announced to assistive technology.");
 if (!home.includes('data-demo-case="read" aria-pressed="true"')) throw new Error("Policy demo needs an accessible selected scenario state.");
 if (!home.includes('data-demo-approve class="run-case" data-ko="승인 · 모의 실행"')) throw new Error("Approval demo action must be bilingual.");
-for (const page of ["platform.html", "technology.html", "security.html", "research.html", "company.html", "contact.html", "privacy.html", "terms.html", "lab.html", "local-console.html"]) {
+for (const page of ["platform.html", "technology.html", "security.html", "research.html", "company.html", "contact.html", "privacy.html", "terms.html", "updates.html", "lab.html", "local-console.html"]) {
   if (!home.includes("./" + page)) throw new Error("Homepage is missing navigation to " + page);
 }
 
@@ -142,7 +142,7 @@ for (const phrase of ["Simulation Lab", "Local Control Room", "commercial SaaS",
 const robots = fs.readFileSync(path.join(site, "robots.txt"), "utf8");
 if (!robots.includes("sitemap.xml")) throw new Error("robots.txt must reference the sitemap.");
 const sitemap = fs.readFileSync(path.join(site, "sitemap.xml"), "utf8");
-for (const page of ["platform.html", "technology.html", "security.html", "research.html", "company.html", "contact.html", "privacy.html", "terms.html"]) {
+for (const page of ["platform.html", "technology.html", "security.html", "research.html", "company.html", "contact.html", "privacy.html", "terms.html", "updates.html"]) {
   if (!sitemap.includes("/" + page)) throw new Error("Sitemap is missing " + page);
 }
 console.log("Custos website validation passed: corporate pages, standalone tools, local links, bilingual controls, threat model, sitemap, and demo behavior.");
