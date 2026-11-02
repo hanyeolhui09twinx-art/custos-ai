@@ -41,3 +41,6 @@ jobs:
 
       - name: Check browser console script and security wiring
         run: node tests/check_studio_console.js
+
+      - name: Validate corporate website routes and content
+        run: node tests/check_corporate_site.js
