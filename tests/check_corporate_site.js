@@ -204,7 +204,7 @@ for (const page of ["platform.html", "technology.html", "security.html", "resear
 }
 
 const updates = fs.readFileSync(path.join(site, "updates.html"), "utf8");
-for (const phrase of ["DAY 001", "DAY 002", "DAY 003", "DAY 004", "DAY 005", "DAY 006", "DAY 007", "DAY 008", "DAY 009", "DAY 010", "DAY 011", "DAY 012", "DAY 013", "56 TESTS IN SUITE", "NOT VERIFIED", "mock execution adapter", "real-agent bypass resistance"]) {
+for (const phrase of ["DAY 001", "DAY 002", "DAY 003", "DAY 004", "DAY 005", "DAY 006", "DAY 007", "DAY 008", "DAY 009", "DAY 010", "DAY 011", "DAY 012", "DAY 013", "57 TESTS IN SUITE", "NOT VERIFIED", "mock execution adapter", "real-agent bypass resistance"]) {
   if (!updates.toLowerCase().includes(phrase.toLowerCase())) throw new Error("Updates page is missing factual status item: " + phrase);
 }
 for (const log of ["day-001.md", "day-002.md", "day-003.md", "day-004.md", "day-005.md", "day-006.md", "day-007.md", "day-008.md", "day-009.md", "day-010.md", "day-011.md", "day-012.md", "day-013.md"]) {
