@@ -1,0 +1,3 @@
+# Optional OpenAI Agents SDK integration and its contract tests.
+# Keep this pin aligned with the version exercised in GitHub Actions.
+openai-agents==0.24.0
