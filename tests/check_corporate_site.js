@@ -364,25 +364,31 @@ const mobileNav = new FakeElement();
 const demoRead = new FakeElement({"data-demo-case": "read"});
 const demoEmail = new FakeElement({"data-demo-case": "email"});
 const demoDisable = new FakeElement({"data-demo-case": "disable"});
+const copyButton = new FakeElement({"data-copy-code": "#setup-code", "data-ko": "코드 복사", "data-en": "Copy code"});
+const setupCode = new FakeElement();
+setupCode.innerText = "$env:CUSTOS_AGENT_TOKENS = 'test-token'";
+let copiedSnippet = "";
 const demoRun = new FakeElement();
 const demoApprove = new FakeElement();
 const demoDeny = new FakeElement();
 const selectorResults = {
   "[data-lang-button]": [langKo, langEn],
-  "[data-ko][data-en]": [],
+  "[data-ko][data-en]": [copyButton],
   "[data-placeholder-ko][data-placeholder-en]": [],
   "[data-menu-toggle]": [menuToggle],
   "[data-mobile-nav]": [mobileNav],
   "[data-nav]": [],
   ".reveal": [],
-  "[data-demo-case]": [demoRead, demoEmail, demoDisable]
+  "[data-demo-case]": [demoRead, demoEmail, demoDisable],
+  "[data-copy-code]": [copyButton]
 };
 const singleResults = {
   "[data-menu-toggle]": menuToggle,
   "[data-mobile-nav]": mobileNav,
   "[data-demo-run]": demoRun,
   "[data-demo-approve]": demoApprove,
-  "[data-demo-deny]": demoDeny
+  "[data-demo-deny]": demoDeny,
+  "#setup-code": setupCode
 };
 const keyListeners = {};
 const fakeDocument = {
@@ -394,7 +400,14 @@ const fakeDocument = {
   addEventListener: (name, callback) => { keyListeners[name] = callback; }
 };
 const fakeSession = {getItem: () => null, setItem: () => {}};
-vm.runInNewContext(js, {document: fakeDocument, window: {}, sessionStorage: fakeSession});
+vm.runInNewContext(js, {
+  document: fakeDocument,
+  window: {navigator: {clipboard: {writeText: value => {
+    copiedSnippet = value;
+    return {then: callback => { callback(); return {catch: () => {}}; }};
+  }}}},
+  sessionStorage: fakeSession
+});
 
 demoEmail.click();
 if (demoEmail.getAttribute("aria-pressed") !== "true" || demoRead.getAttribute("aria-pressed") !== "false") {
@@ -444,4 +457,8 @@ keyListeners.keydown({key: "Escape"});
 if (menuToggle.getAttribute("aria-expanded") !== "false" || menuToggle.getAttribute("aria-label") !== "메뉴 열기" || mobileNav.classList.contains("open") || !menuToggle.focused) {
   throw new Error("Escape must close the mobile menu and restore focus to the toggle.");
 }
-console.log("Corporate UI behavior checks passed: policy states, approval flow, bilingual state retention, and keyboard menu control.");
+copyButton.click();
+if (copiedSnippet !== setupCode.innerText || copyButton.textContent !== "복사됨") {
+  throw new Error("Developer code copy control must write the selected snippet and announce success.");
+}
+console.log("Corporate UI behavior checks passed: policy states, approval flow, bilingual state retention, keyboard menu control, and code-copy behavior.");
