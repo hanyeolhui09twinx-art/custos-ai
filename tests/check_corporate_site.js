@@ -32,6 +32,12 @@ for (const file of allPages) {
     if (!/class="skip-link"/.test(html) || !/id="main-content"/.test(html)) {
       throw new Error(file + ": missing keyboard skip link or main landmark");
     }
+    if (file !== "404.html") {
+      if (!/aria-controls="mobile-navigation"/.test(html) || !/id="mobile-navigation"/.test(html)) {
+        throw new Error(file + ": mobile menu button and navigation are not programmatically connected");
+      }
+      if (!/rel="canonical"/.test(html)) throw new Error(file + ": missing canonical URL");
+    }
   }
 
   const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
@@ -58,12 +64,17 @@ const css = fs.readFileSync(path.join(site, "corporate.css"), "utf8");
 if (/@import\s+url/i.test(css)) throw new Error("Corporate CSS must not depend on external font imports.");
 if (!js.includes("review.hidden=!pending")) throw new Error("Human-approval demo does not reveal its review controls.");
 if (!js.includes("data-lang-button")) throw new Error("Bilingual control handler is missing.");
+if (!js.includes('event.key==="Escape"')) throw new Error("Mobile navigation must close on Escape.");
+if (!js.includes('button.focus()')) throw new Error("Escape handling must restore focus to the menu toggle.");
 
 const security = fs.readFileSync(path.join(site, "security.html"), "utf8");
 for (const lens of ["/ASSUMPTIONS", "/BLINDSPOT", "/COUNTER", "/EDGECASE", "/SELFCRITIQUE"]) {
   if (!security.includes(lens)) throw new Error("Security page is missing threat-model section " + lens);
 }
 const home = fs.readFileSync(path.join(site, "index.html"), "utf8");
+if (!home.includes('role="status" aria-live="polite"')) throw new Error("Policy demo decision must be announced to assistive technology.");
+if (!home.includes('data-demo-case="read" aria-pressed="true"')) throw new Error("Policy demo needs an accessible selected scenario state.");
+if (!home.includes('data-demo-approve class="run-case" data-ko="승인 · 모의 실행"')) throw new Error("Approval demo action must be bilingual.");
 for (const page of ["platform.html", "technology.html", "security.html", "research.html", "company.html", "contact.html", "privacy.html", "lab.html", "local-console.html"]) {
   if (!home.includes("./" + page)) throw new Error("Homepage is missing navigation to " + page);
 }
