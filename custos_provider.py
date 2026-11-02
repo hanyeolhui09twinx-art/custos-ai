@@ -436,7 +436,16 @@ class ReadOnlyResearchFixture:
         finally:
             connection.close()
 
-        records = [dict(row) for row in rows]
+        records = []
+        for row in rows:
+            record = dict(row)
+            # Enforce whole-token matching after the bounded SQL pre-filter.
+            # This avoids substring surprises such as "or" matching "record".
+            text_tokens = set(
+                re.findall(r"[a-z]{2,32}|[가-힣]{2,16}", (record["title"] + " " + record["content"]).casefold())
+            )
+            if all(token in text_tokens for token in tokens):
+                records.append(record)
         return {
             "status": "read_only",
             "storage": "local_synthetic_sqlite_fixture",
@@ -466,7 +475,14 @@ class ProviderExecutionAdapter:
     def execute(self, request: ActionRequest) -> dict[str, Any]:
         binding = (request.action, request.resource)
         if binding == ("read_database", "research_db"):
-            return self.research_fixture.search(request.parameters)
+            result = self.research_fixture.search(request.parameters)
+            result.update({
+                "agent_id": request.agent_id,
+                "action": request.action,
+                "resource": request.resource,
+                "request_id": request.request_id,
+            })
+            return result
         if binding == ("send_email", "company_email"):
             return self.mock_adapter.execute(request)
         raise DispatchAuthorizationError("No Provider execution adapter exists for this action/resource pair.")

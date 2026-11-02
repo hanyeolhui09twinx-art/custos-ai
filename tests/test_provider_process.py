@@ -542,12 +542,13 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         ]
         for index, (agent_id, action, resource, mode) in enumerate(cases, start=1):
             with self.subTest(agent_id=agent_id, action=action, resource=resource, mode=mode):
+                parameters = {"query": "bounded-provider-test"} if action == "read_database" else {}
                 request = ActionRequest.from_payload(
                     agent_id,
                     {
                         "action": action,
                         "resource": resource,
-                        "parameters": {},
+                        "parameters": parameters,
                         "request_id": f"provider-registry-deny-{index:03d}",
                     },
                 )
