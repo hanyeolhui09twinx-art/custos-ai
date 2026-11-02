@@ -13,7 +13,8 @@ This document describes the current v0.2 prototype boundary. It is intentionally
 
 ## /BLINDSPOT — What is not protected yet
 
-- **Credential lifecycle:** Bearer tokens are static environment configuration. There is no token expiry, automated rotation, per-tool credential, asymmetric agent identity, key revocation service, or signed request envelope.
+- **Credential lifecycle:** Bearer tokens are static environment configuration. There is no token expiry, automated rotation, per-tool credential, asymmetric agent identity, key revocation service, or signed request envelope. The browser console does not persist pasted tokens, but its public JavaScript is still in the credential trust path; only development tokens belong there.
+- **Secret detection:** common credential-looking parameter key names are rejected before persistence. This is not general-purpose DLP and cannot reliably detect secrets hidden in arbitrary free-text values.
 - **Human identity:** The reviewer is represented by one shared token and a fixed reviewer label. There are no individual reviewer accounts, role separation, MFA, quorum approval, or reviewer audit identity verification.
 - **Policy administration:** There is no signed policy bundle, policy version approval, policy rollback workflow, or policy-integrity monitor.
 - **Tool boundary:** The mock adapter does not prove that a real tool cannot be called directly. A real adapter must enforce the policy at the actual tool boundary, not just trust a prior UI decision.
@@ -41,6 +42,7 @@ This document describes the current v0.2 prototype boundary. It is intentionally
 - The stored approval payload changes. The payload digest check rejects it before execution is claimed.
 - A process crashes while a request receipt is marked processing. In this version, the key remains locked and requires operator investigation; it is not automatically reclaimed.
 - A process crashes after a real external tool succeeds but before Custos records completion. This outcome could be uncertain. Production adapters need downstream idempotency keys and a reconciliation/status-query mechanism.
+- A request contains a raw credential under a common sensitive field name. It should be rejected; a managed reference such as credential_ref can be passed instead. Secret strings hidden in ordinary text are not detected.
 - The machine clock moves or is incorrect. Approval expiry depends on the local wall clock; production needs a trusted time source and clock-skew policy.
 - The audit file is truncated, replaced, or rewritten by a privileged actor. The current local hash chain cannot independently recover the lost history.
 
@@ -48,7 +50,7 @@ This document describes the current v0.2 prototype boundary. It is intentionally
 
 The v0.2 work improves the prototype in concrete ways: deny-by-default policy evaluation, strict request validation, bearer-token identity mapping, SQLite-persisted approvals, approval expiry, requester binding, single-use execution claims, dispatch-time policy re-checks, request idempotency, a hash-chained local audit trail, and automated tests.
 
-The tests exercise these behaviors, including concurrent approval execution and modified approval payloads. The CI result only says that these specific automated tests passed in GitHub's runner. It does not demonstrate resistance to unknown attacks, production load, compromised hosts, malicious adapters, or direct agent-to-tool bypass.
+The tests exercise these behaviors, including concurrent approval execution, modified approval payloads, CORS origin restrictions, oversized/deep JSON rejection, and raw credential field rejection. The CI result only says that these specific automated tests passed in GitHub's runner. It does not demonstrate resistance to unknown attacks, production load, compromised hosts, malicious adapters, or direct agent-to-tool bypass.
 
 The most important missing proof is an end-to-end test with a real agent framework and an isolated tool sandbox, where the agent has no alternate path to the tool. Until that exists, Custos should be described as a local research prototype with a mock execution adapter, not a production enforcement layer.
 
