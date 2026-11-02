@@ -174,11 +174,11 @@ if (!home.includes('href="./developers.html"') || !home.includes("Developer quic
   throw new Error("Platform page must show its prototype status and decision-card UI.");
 }
 const technology = fs.readFileSync(path.join(site, "technology.html"), "utf8");
-for (const phrase of ["DISPATCH PERMIT / RE-CHECK", "MOCK TOOL PROVIDER + RECEIPT LEDGER", "Dispatch permit boundary", "15-second HMAC request-bound permit", "Exact tool binding", "explicitly registered Action/Resource pairs", "durable SQLite nonce ledger", "Provider process boundary", "MOCK TOOL PROVIDER + RECEIPT LEDGER", "Execution receipt ledger", "Gateway restart recovery", "completed results are cached", "indeterminate", "not an OS sandbox", "HMAC-authenticated receipt reads", "Production execution adapter"]) {
+for (const phrase of ["DISPATCH PERMIT / RE-CHECK", "MOCK TOOL PROVIDER + RECEIPT LEDGER", "Dispatch permit boundary", "15-second HMAC request-bound permit", "Exact tool binding", "explicitly registered Action/Resource pairs", "durable SQLite nonce ledger", "Provider process boundary", "MOCK TOOL PROVIDER + RECEIPT LEDGER", "Execution receipt ledger", "Gateway restart recovery", "completed results are cached", "indeterminate", "not an OS sandbox", "HMAC-authenticated receipt reads", "Manual key rotation", "key_id", "overlapping old/new keys", "Production execution adapter"]) {
   if (!technology.includes(phrase)) throw new Error("Technology page is missing the guarded adapter boundary description: " + phrase);
 }
 const threatModel = fs.readFileSync(path.join(root, "docs", "THREAT_MODEL.md"), "utf8");
-for (const phrase of ["Dispatch capability lifecycle", "HMAC-signed permit", "in-memory consumer", "no key rotation, KMS", "direct agent-to-real-tool bypass", "same-host process separation", "unregistered action/resource pairs", "indeterminate", "never automatically replayed", "at-most-once local dispatch behavior", "single gateway instance", "processing", "request-bound approval", "X-Custos-Receipt-Signature", "domain-separated key", "mutual TLS"]) {
+for (const phrase of ["Dispatch capability lifecycle", "HMAC-signed permit", "in-memory consumer", "no key rotation, KMS", "direct agent-to-real-tool bypass", "same-host process separation", "unregistered action/resource pairs", "indeterminate", "never automatically replayed", "at-most-once local dispatch behavior", "single gateway instance", "processing", "request-bound approval", "X-Custos-Receipt-Signature", "domain-separated key", "mutual TLS", "overlapping key ring", "automatic retirement schedule", "KMS/HSM"]) {
   if (!threatModel.includes(phrase)) throw new Error("Threat model is missing the adapter-boundary limitation: " + phrase);
 }
 const developerDocs = fs.readFileSync(path.join(site, "developers.html"), "utf8");
@@ -204,14 +204,17 @@ for (const page of ["platform.html", "technology.html", "security.html", "resear
 }
 
 const updates = fs.readFileSync(path.join(site, "updates.html"), "utf8");
-for (const phrase of ["DAY 001", "DAY 002", "DAY 003", "DAY 004", "DAY 005", "DAY 006", "DAY 007", "DAY 008", "DAY 009", "DAY 010", "DAY 011", "DAY 012", "51 TESTS PASS", "NOT VERIFIED", "mock execution adapter", "real-agent bypass resistance"]) {
+for (const phrase of ["DAY 001", "DAY 002", "DAY 003", "DAY 004", "DAY 005", "DAY 006", "DAY 007", "DAY 008", "DAY 009", "DAY 010", "DAY 011", "DAY 012", "DAY 013", "56 TESTS IN SUITE", "NOT VERIFIED", "mock execution adapter", "real-agent bypass resistance"]) {
   if (!updates.toLowerCase().includes(phrase.toLowerCase())) throw new Error("Updates page is missing factual status item: " + phrase);
 }
-for (const log of ["day-001.md", "day-002.md", "day-003.md", "day-004.md", "day-005.md", "day-006.md", "day-007.md", "day-008.md", "day-009.md", "day-010.md", "day-011.md", "day-012.md"]) {
+for (const log of ["day-001.md", "day-002.md", "day-003.md", "day-004.md", "day-005.md", "day-006.md", "day-007.md", "day-008.md", "day-009.md", "day-010.md", "day-011.md", "day-012.md", "day-013.md"]) {
   if (!updates.includes(log)) throw new Error("Updates page is missing the source development log: " + log);
 }
 
 const apiSource = fs.readFileSync(path.join(root, "custos_api.py"), "utf8");
+if (!apiSource.includes("dispatch_signing_keys=dispatch_signing_keys") || !apiSource.includes("active_dispatch_key_id=active_dispatch_key_id")) {
+  throw new Error("Gateway API must pass the active key ring to the gateway.");
+}
 if (!apiSource.includes("receipt_signing_key=dispatch_signing_key")) {
   throw new Error("Gateway API must pass the dispatch key to authenticated provider receipt lookups.");
 }
@@ -226,7 +229,7 @@ for (const phrase of ["DurableDispatchPermitVerifier", "BEGIN IMMEDIATE", "consu
   if (!providerSource.includes(phrase)) throw new Error("Provider process is missing a required verification control: " + phrase);
 }
 const providerTests = fs.readFileSync(path.join(root, "tests", "test_provider_process.py"), "utf8");
-for (const phrase of ["subprocess.Popen", "test_provider_permit_is_single_use_under_concurrent_replay", "test_provider_replay_record_survives_process_restart", "test_human_approved_dispatch_uses_the_separate_provider", "test_gateway_fails_closed_when_provider_is_unavailable", "test_same_request_id_returns_persisted_result_without_second_execution", "test_same_request_id_with_different_digest_is_rejected", "test_interrupted_execution_becomes_indeterminate_after_restart", "test_gateway_reconciles_a_lost_response_from_provider_receipt", "test_approved_gateway_reconciles_a_lost_provider_response", "test_gateway_restart_reconciles_provider_completion_before_request_receipt_commit", "test_gateway_restart_without_provider_receipt_stays_unknown_and_never_redispatches", "test_gateway_restart_recovers_existing_pending_approval_without_duplicate", "test_approved_execution_restart_reconciles_provider_receipt", "test_provider_receipt_lookup_requires_a_valid_hmac_signature"]) {
+for (const phrase of ["subprocess.Popen", "test_provider_permit_is_single_use_under_concurrent_replay", "test_provider_replay_record_survives_process_restart", "test_human_approved_dispatch_uses_the_separate_provider", "test_gateway_fails_closed_when_provider_is_unavailable", "test_same_request_id_returns_persisted_result_without_second_execution", "test_same_request_id_with_different_digest_is_rejected", "test_interrupted_execution_becomes_indeterminate_after_restart", "test_gateway_reconciles_a_lost_response_from_provider_receipt", "test_approved_gateway_reconciles_a_lost_provider_response", "test_gateway_restart_reconciles_provider_completion_before_request_receipt_commit", "test_gateway_restart_without_provider_receipt_stays_unknown_and_never_redispatches", "test_gateway_restart_recovers_existing_pending_approval_without_duplicate", "test_approved_execution_restart_reconciles_provider_receipt", "test_provider_receipt_lookup_requires_a_valid_hmac_signature", "test_gateway_uses_configured_active_key_id_and_key_ring", "test_provider_accepts_previous_receipt_lookup_key_during_rotation", "test_provider_accepts_previous_and_active_keys_during_rotation", "test_provider_rejects_retired_key_after_rotation_window", "test_provider_rejects_permit_key_id_substitution"]) {
   if (!providerTests.includes(phrase)) throw new Error("Separate-process integration test is missing: " + phrase);
 }
 const gatewaySource = fs.readFileSync(path.join(root, "custos_gateway.py"), "utf8");
@@ -270,7 +273,7 @@ for (const code of ["200", "400", "401", "403", "404", "409", "410", "413", "500
   if (!developerDocs.includes(">" + code + "<")) throw new Error("Developer Docs is missing HTTP status code " + code);
 }
 if (!developerDocs.includes("BLOCK") || !developerDocs.includes("HTTP 200")) throw new Error("Developer Docs must distinguish policy decisions from HTTP response status.");
-for (const phrase of ["custos_provider.py", "CUSTOS_TOOL_PROVIDER_URL", "CUSTOS_DISPATCH_SIGNING_KEY", "same trusted machine", "OS sandboxing"]) {
+for (const phrase of ["custos_provider.py", "CUSTOS_TOOL_PROVIDER_URL", "CUSTOS_DISPATCH_KEYS", "CUSTOS_ACTIVE_DISPATCH_KEY_ID", "CUSTOS_DISPATCH_SIGNING_KEY", "Manual key rotation sequence", "same trusted machine", "OS sandboxing"]) {
   if (!developerDocs.includes(phrase)) throw new Error("Developer Docs must disclose provider-process setup: " + phrase);
 }
 for (const phrase of ["/v1/requests", "/v1/approvals", "request_id", "research_db", "mock execution adapter", "Do not enter production credentials"]) {
