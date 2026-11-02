@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#f3f5f2">
+<meta name="description" content="Developer documentation for running the Custos local prototype API, submitting action requests, and reviewing approvals.">
+<link rel="canonical" href="https://hanyeolhui09twinx-art.github.io/custos-ai/developers.html">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Developer Documentation | Custos AI">
+<meta property="og:description" content="Local prototype setup, request schema, API routes, and implementation boundaries.">
+<meta property="og:url" content="https://hanyeolhui09twinx-art.github.io/custos-ai/developers.html">
+<link rel="icon" href="./favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="./corporate.css">
+<script defer src="./corporate.js"></script>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'none'; base-uri 'self'; object-src 'none'; form-action 'self'">
+<title>Developer Documentation | Custos AI</title>
+</head>
+<body data-page="developers">
+<a class="skip-link" href="#main-content" data-ko="본문으로 바로가기" data-en="Skip to main content">본문으로 바로가기</a>
+<div class="announcement"><span data-ko="독립 AI 통제 기술 연구 프로젝트 · 초기 프로토타입 단계" data-en="Independent AI control research project · Early-stage prototype">독립 AI 통제 기술 연구 프로젝트 · 초기 프로토타입 단계</span><a href="./updates.html" data-ko="개발 업데이트 보기 ↗" data-en="View development updates ↗">개발 업데이트 보기 ↗</a></div>
+<header class="header"><div class="header-inner">
+<a class="brand" href="./index.html"><span class="brand-symbol"></span><span><span class="brand-word">CUSTOS</span><span class="brand-sub">INDEPENDENT AI CONTROL</span></span></a>
+<nav class="nav" aria-label="Main navigation">
+<a href="./platform.html" data-nav="platform" data-ko="플랫폼" data-en="Platform">플랫폼</a>
+<a href="./technology.html" data-nav="technology" data-ko="기술" data-en="Technology">기술</a>
+<a href="./security.html" data-nav="security" data-ko="보안·신뢰" data-en="Security & Trust">보안·신뢰</a>
+<a href="./research.html" data-nav="research" data-ko="연구·자료" data-en="Research">연구·자료</a>
+<a href="./company.html" data-nav="company" data-ko="프로젝트 소개" data-en="About">프로젝트 소개</a>
+<a href="./contact.html" data-nav="contact" data-ko="문의" data-en="Contact">문의</a>
+</nav>
+<div class="header-actions"><div class="lang-switch" role="group" aria-label="Language"><button data-lang-button="ko" type="button">KR</button><button data-lang-button="en" type="button">EN</button></div><a class="header-cta" href="./local-console.html" data-ko="Local Control Room ↗" data-en="Local Control Room ↗">Local Control Room ↗</a><button class="menu-toggle" type="button" data-menu-toggle aria-controls="mobile-navigation" aria-expanded="false" aria-label="메뉴 열기">☰</button></div>
+</div><nav class="mobile-nav" id="mobile-navigation" data-mobile-nav aria-label="Mobile navigation">
+<a href="./platform.html" data-ko="플랫폼" data-en="Platform">플랫폼</a><a href="./technology.html" data-ko="기술" data-en="Technology">기술</a><a href="./security.html" data-ko="보안·신뢰" data-en="Security & Trust">보안·신뢰</a><a href="./research.html" data-ko="연구·자료" data-en="Research">연구·자료</a><a href="./company.html" data-ko="프로젝트 소개" data-en="About">프로젝트 소개</a><a href="./contact.html" data-ko="문의" data-en="Contact">문의</a><a href="./lab.html">Simulation Lab ↗</a><a href="./local-console.html">Local Control Room ↗</a>
+</nav></header>
+<main id="main-content">
+<section class="page-hero"><div class="container"><div class="breadcrumb"><a href="./index.html">CUSTOS</a> / DEVELOPER DOCUMENTATION</div><div class="eyebrow">LOCAL PROTOTYPE / API REFERENCE</div><h1 data-ko="개발자를 위한<br><em>로컬 프로토타입 안내</em>" data-en="Developer guide for the<br><em>local Custos prototype</em>">개발자를 위한<br><em>로컬 프로토타입 안내</em></h1><p data-ko="로컬 Python API를 실행하고, 정책 요청을 제출하고, 인간 승인 흐름을 확인하는 방법을 안내합니다. 이 문서는 현재 구현된 프로토타입을 설명하며 실제 에이전트 통합이나 상용 실행 어댑터를 제공하지 않습니다." data-en="Run the local Python API, submit policy requests, and inspect the human-approval workflow. This guide documents the current prototype; it does not provide a real agent integration or production execution adapter.">로컬 Python API를 실행하고, 정책 요청을 제출하고, 인간 승인 흐름을 확인하는 방법을 안내합니다. 이 문서는 현재 구현된 프로토타입을 설명하며 실제 에이전트 통합이나 상용 실행 어댑터를 제공하지 않습니다.</p></div></section>
+<section class="section"><div class="container">
+<div class="section-head"><div class="eyebrow">01 / BEFORE YOU START</div><div><h2 data-ko="실행 환경" data-en="Prerequisites">실행 환경</h2><p data-ko="현재 로컬 API는 Python 표준 라이브러리로 실행됩니다. 외부 패키지를 별도로 설치할 필요는 없지만, 브라우저 기반 Local Control Room을 사용할 때는 지원 브라우저의 Loopback 네트워크 권한이 필요할 수 있습니다." data-en="The local API currently uses the Python standard library. No additional package installation is required, but a supported browser may require Loopback network permission when using the Local Control Room.">현재 로컬 API는 Python 표준 라이브러리로 실행됩니다. 외부 패키지를 별도로 설치할 필요는 없지만, 브라우저 기반 Local Control Room을 사용할 때는 지원 브라우저의 Loopback 네트워크 권한이 필요할 수 있습니다.</p></div></div>
+<div class="resources-grid">
+<article class="resource-card"><span class="kind">RUNTIME</span><h3>Python 3.10+</h3><p data-ko="Python 3.10 이상. 기본 서버는 127.0.0.1:8765에 바인딩됩니다." data-en="Python 3.10 or later. The server binds to 127.0.0.1:8765 by default.">Python 3.10 이상. 기본 서버는 127.0.0.1:8765에 바인딩됩니다.</p></article>
+<article class="resource-card"><span class="kind">CREDENTIALS</span><h3>Temporary tokens</h3><p data-ko="Agent 및 Reviewer를 위한 임시 개발용 Bearer 토큰. 각 토큰은 32자 이상이어야 합니다." data-en="Temporary development Bearer tokens for the Agent and Reviewer. Each token must be at least 32 characters.">Agent 및 Reviewer를 위한 임시 개발용 Bearer 토큰. 각 토큰은 32자 이상이어야 합니다.</p></article>
+<article class="resource-card"><span class="kind">EXECUTION</span><h3>Mock adapter only</h3><p data-ko="모든 외부 실행은 모의 처리됩니다. 데이터베이스 조회나 이메일 발송은 실제로 수행되지 않습니다." data-en="All external execution is simulated. No real database read or email delivery is performed.">모든 외부 실행은 모의 처리됩니다. 데이터베이스 조회나 이메일 발송은 실제로 수행되지 않습니다.</p></article>
+</div>
+</div></section>
+<section class="section" style="background:#e8ede8"><div class="container">
+<div class="section-head"><div class="eyebrow">02 / LOCAL SETUP</div><div><h2 data-ko="API 실행하기" data-en="Start the local API">API 실행하기</h2><p data-ko="저장소를 내려받은 뒤 PowerShell에서 저장소 루트 폴더를 열고 임시 토큰을 생성합니다. 토큰을 코드·이슈·스크린샷에 저장하거나 공유하지 마세요." data-en="After cloning the repository, open its root directory in PowerShell and generate temporary tokens. Do not store or share tokens in code, issues, or screenshots.">저장소를 내려받은 뒤 PowerShell에서 저장소 루트 폴더를 열고 임시 토큰을 생성합니다. 토큰을 코드·이슈·스크린샷에 저장하거나 공유하지 마세요.</p></div></div>
+<div class="code-panel"><div class="code-head"><span>POWERSHELL / LOCAL DEVELOPMENT</span><span>01 — START SERVER</span></div><pre><code>$agentToken = python -c "import secrets; print(secrets.token_urlsafe(32))"
+$reviewerToken = python -c "import secrets; print(secrets.token_urlsafe(32))"
+
+$env:CUSTOS_AGENT_TOKENS = '{"research_agent":"' + $agentToken + '"}'
+$env:CUSTOS_REVIEWER_TOKEN = $reviewerToken
+
+python custos_api.py</code></pre></div>
+<div class="doc-note"><strong data-ko="실행 중인 터미널을 닫지 마세요." data-en="Keep the terminal running.">실행 중인 터미널을 닫지 마세요.</strong><p data-ko="API 서버가 켜져 있는 동안 Local Control Room에서 Agent Token과 Reviewer Token을 각 입력란에 넣고 연결을 확인합니다. 사용을 마치면 터미널에서 Ctrl+C를 눌러 서버를 종료하세요." data-en="While the API server is running, enter the Agent Token and Reviewer Token in their respective Local Control Room fields and test the connection. Press Ctrl+C in the terminal when finished.">API 서버가 켜져 있는 동안 Local Control Room에서 Agent Token과 Reviewer Token을 각 입력란에 넣고 연결을 확인합니다. 사용을 마치면 터미널에서 Ctrl+C를 눌러 서버를 종료하세요.</p><a href="./local-console.html" data-ko="Local Control Room 열기 ↗" data-en="Open Local Control Room ↗">Local Control Room 열기 ↗</a></div>
+</div></section>
+<section class="section"><div class="container">
+<div class="section-head"><div class="eyebrow">03 / REQUEST MODEL</div><div><h2 data-ko="요청 형식" data-en="Request schema">요청 형식</h2><p data-ko="요청 주체는 Bearer 토큰에서 서버가 매핑합니다. 요청 본문에 agent_id를 직접 넣지 않습니다. 허용되는 필드는 action, resource, parameters, request_id입니다." data-en="The server derives the requester identity from the Bearer token. Do not supply agent_id in the request body. Allowed fields are action, resource, parameters, and request_id.">요청 주체는 Bearer 토큰에서 서버가 매핑합니다. 요청 본문에 agent_id를 직접 넣지 않습니다. 허용되는 필드는 action, resource, parameters, request_id입니다.</p></div></div>
+<div class="code-panel"><div class="code-head"><span>JSON / POST BODY</span><span>02 — SUBMIT REQUEST</span></div><pre><code>{
+  "action": "read_database",
+  "resource": "research_db",
+  "parameters": {},
+  "request_id": "docs-read-001"
+}</code></pre></div>
+<p class="form-note" style="margin-top:12px" data-ko="request_id는 선택 사항이지만, 동일 작업의 재시도에는 같은 ID를 사용해야 중복 실행을 피할 수 있습니다. 같은 ID에 다른 페이로드를 넣으면 충돌로 거부됩니다. 매개변수는 JSON 객체여야 하며 민감정보 필드와 크기 제한이 적용됩니다." data-en="request_id is optional, but reuse the same ID when retrying the same logical operation to avoid duplicate execution. Reusing an ID with a different payload is rejected as a conflict. Parameters must be a JSON object and are subject to sensitive-field and size checks.">request_id는 선택 사항이지만, 동일 작업의 재시도에는 같은 ID를 사용해야 중복 실행을 피할 수 있습니다. 같은 ID에 다른 페이로드를 넣으면 충돌로 거부됩니다. 매개변수는 JSON 객체여야 하며 민감정보 필드와 크기 제한이 적용됩니다.</p>
+</div></section>
+<section class="section" style="background:#e8ede8"><div class="container">
+<div class="section-head"><div class="eyebrow">04 / API ROUTES</div><div><h2 data-ko="API 엔드포인트" data-en="API endpoints">API 엔드포인트</h2><p data-ko="GET /health를 제외한 엔드포인트는 Bearer 인증이 필요합니다. Agent 토큰은 요청 제출 및 본인 승인 요청 실행에 사용하고, Reviewer 토큰은 승인 목록 조회와 검토에 사용합니다." data-en="All endpoints except GET /health require Bearer authentication. Agent tokens submit requests and execute the originating agent's approved request; Reviewer tokens list and review pending approvals.">GET /health를 제외한 엔드포인트는 Bearer 인증이 필요합니다. Agent 토큰은 요청 제출 및 본인 승인 요청 실행에 사용하고, Reviewer 토큰은 승인 목록 조회와 검토에 사용합니다.</p></div></div>
+<div class="table-wrap"><table><thead><tr><th>METHOD</th><th>PATH</th><th>AUTH</th><th>DESCRIPTION</th></tr></thead><tbody>
+<tr><td>GET</td><td><code>/health</code></td><td>None</td><td data-ko="로컬 서버 상태" data-en="Local service health">로컬 서버 상태</td></tr>
+<tr><td>POST</td><td><code>/v1/requests</code></td><td>Agent</td><td data-ko="정책 요청 제출" data-en="Submit an action request">정책 요청 제출</td></tr>
+<tr><td>GET</td><td><code>/v1/approvals</code></td><td>Reviewer</td><td data-ko="대기 중인 승인 목록 조회" data-en="List pending approvals">대기 중인 승인 목록 조회</td></tr>
+<tr><td>POST</td><td><code>/v1/approvals/{approval_id}/review</code></td><td>Reviewer</td><td data-ko="요청 승인 또는 거부. JSON body: decision=approve|deny" data-en="Approve or deny. JSON body: decision=approve|deny">요청 승인 또는 거부. JSON body: decision=approve|deny</td></tr>
+<tr><td>POST</td><td><code>/v1/approvals/{approval_id}/execute</code></td><td>Originating Agent</td><td data-ko="원래 요청한 Agent가 승인된 요청을 한 번 실행" data-en="Original requester executes the approved request once">원래 요청한 Agent가 승인된 요청을 한 번 실행</td></tr>
+</tbody></table></div>
+</div></section>
+<section class="section"><div class="container">
+<div class="section-head"><div class="eyebrow">05 / POLICY EXAMPLES</div><div><h2 data-ko="현재 예시 정책" data-en="Current example policy">현재 예시 정책</h2><p data-ko="정책은 현재 코드에 정의된 개발용 allowlist입니다. 실제 조직의 역할·권한 체계가 아닙니다." data-en="Policies are a development allowlist defined in code, not a production organizational authorization model.">정책은 현재 코드에 정의된 개발용 allowlist입니다. 실제 조직의 역할·권한 체계가 아닙니다.</p></div></div>
+<div class="table-wrap"><table><thead><tr><th>AGENT</th><th>ACTION</th><th>RESOURCE</th><th>DECISION</th></tr></thead><tbody>
+<tr><td>research_agent</td><td>read_database</td><td>research_db</td><td><span class="status-pill done">ALLOW</span></td></tr>
+<tr><td>research_agent</td><td>send_email</td><td>company_email</td><td><span class="status-pill gap">HUMAN_APPROVAL</span></td></tr>
+<tr><td>Any</td><td>disable_custos / modify_custos_policy / delete_audit_log</td><td>Any</td><td><span class="status-pill gap">BLOCK</span></td></tr>
+<tr><td>Unknown / unlisted</td><td>Any</td><td>Any</td><td><span class="status-pill gap">BLOCK</span></td></tr>
+</tbody></table></div>
+</div></section>
+<section class="feature-band"><div class="container"><div class="eyebrow" style="color:#a4b8b2">06 / SECURITY BOUNDARIES</div><h2 data-ko="로컬 실험 환경입니다.<br>운영 자격 증명을 넣지 마세요." data-en="This is a local prototype.<br>Do not enter production credentials.">로컬 실험 환경입니다.<br>운영 자격 증명을 넣지 마세요.</h2><p data-ko="현재 API는 loopback 전용 HTTP, 정적 개발 토큰, 단일 공유 Reviewer, SQLite 로컬 상태, 로컬 해시 연결 감사 로그, 모의 실행 어댑터를 사용합니다. TLS, 토큰 회전, 개별 Reviewer 식별, MFA, 외부 불변 감사 저장소, 실제 도구 경계 강제, 독립 보안 감사는 구현되지 않았습니다." data-en="The current API uses loopback-only HTTP, static development tokens, one shared reviewer credential, local SQLite state, a local hash-chained audit log, and a mock execution adapter. TLS, token rotation, individual reviewer identities, MFA, remote immutable audit storage, real tool-boundary enforcement, and independent security review are not implemented.">현재 API는 loopback 전용 HTTP, 정적 개발 토큰, 단일 공유 Reviewer, SQLite 로컬 상태, 로컬 해시 연결 감사 로그, 모의 실행 어댑터를 사용합니다. TLS, 토큰 회전, 개별 Reviewer 식별, MFA, 외부 불변 감사 저장소, 실제 도구 경계 강제, 독립 보안 감사는 구현되지 않았습니다.</p><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:23px"><a class="btn" href="./security.html" data-ko="위협 모델 보기 ↗" data-en="Review threat model ↗">위협 모델 보기 ↗</a><a class="btn btn-secondary" style="color:white;border-color:#60777e" href="https://github.com/hanyeolhui09twinx-art/custos-ai/blob/main/README.md" target="_blank" rel="noopener noreferrer" data-ko="전체 README ↗" data-en="Full README ↗">전체 README ↗</a></div></div></section>
+<section class="section"><div class="container"><div class="contact-panel"><div><h2 data-ko="다음 개발 단계에 기여하기" data-en="Contribute to the next engineering gate">다음 개발 단계에 기여하기</h2><p data-ko="실제 Agent 통합, 어댑터 격리, 우회 테스트, 실패 복구, 보안 검토 제안을 환영합니다. 공개 이슈에는 토큰·개인정보·고객 데이터를 올리지 마세요." data-en="Technical proposals for real-agent integration, adapter isolation, bypass tests, failure recovery, and security review are welcome. Never post tokens, personal data, or customer information in public issues.">실제 Agent 통합, 어댑터 격리, 우회 테스트, 실패 복구, 보안 검토 제안을 환영합니다. 공개 이슈에는 토큰·개인정보·고객 데이터를 올리지 마세요.</p></div><a class="btn" href="https://github.com/hanyeolhui09twinx-art/custos-ai/issues/new?template=research_proposal.yml" target="_blank" rel="noopener noreferrer" data-ko="연구 제안 제출 ↗" data-en="Submit a research proposal ↗">연구 제안 제출 ↗</a></div></div></section>
+</main>
+<footer class="footer"><div class="container"><div class="footer-top">
+<div class="footer-brand"><a class="brand" href="./index.html"><span class="brand-symbol"></span><span><span class="brand-word">CUSTOS</span><span class="brand-sub">INDEPENDENT AI CONTROL</span></span></a><p data-ko="자율형 AI 에이전트의 실행 권한을 독립적으로 검증하기 위한 초기 연구 프로젝트입니다." data-en="An early-stage research project exploring independent authorization for autonomous AI agents.">자율형 AI 에이전트의 실행 권한을 독립적으로 검증하기 위한 초기 연구 프로젝트입니다.</p></div>
+<div class="footer-col"><strong data-ko="플랫폼" data-en="PLATFORM">플랫폼</strong><a href="./platform.html">Custos Control Layer</a><a href="./technology.html" data-ko="기술 아키텍처" data-en="Technical Architecture">기술 아키텍처</a><a href="./developers.html" data-ko="개발자 문서" data-en="Developer Docs">개발자 문서</a><a href="./lab.html">Simulation Lab</a><a href="./local-console.html">Local Control Room</a></div>
+<div class="footer-col"><strong data-ko="신뢰·자료" data-en="TRUST & RESOURCES">신뢰·자료</strong><a href="./security.html" data-ko="보안 및 신뢰" data-en="Security & Trust">보안 및 신뢰</a><a href="./research.html" data-ko="연구·개발 기록" data-en="Research & Development">연구·개발 기록</a><a href="./updates.html" data-ko="업데이트" data-en="Updates">업데이트</a><a href="./privacy.html" data-ko="개인정보 안내" data-en="Privacy Notice">개인정보 안내</a><a href="./terms.html" data-ko="이용 안내" data-en="Terms of Use">이용 안내</a></div>
+<div class="footer-col"><strong data-ko="프로젝트" data-en="PROJECT">프로젝트</strong><a href="./company.html" data-ko="프로젝트 소개" data-en="About Custos">프로젝트 소개</a><a href="./contact.html" data-ko="문의 및 협력" data-en="Contact & Collaboration">문의 및 협력</a><a href="https://github.com/hanyeolhui09twinx-art/custos-ai" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div>
+</div><div class="footer-bottom"><span>© 2026 CUSTOS AI · INDEPENDENT RESEARCH PROJECT</span><span class="footer-disclaimer" data-ko="현재 연구용 프로토타입입니다. 상용 운영 보안·규제·성능 인증을 의미하지 않습니다." data-en="Research prototype only. No production security, regulatory, or performance certification is claimed.">현재 연구용 프로토타입입니다. 상용 운영 보안·규제·성능 인증을 의미하지 않습니다.</span></div></div></footer>
+</body></html>
