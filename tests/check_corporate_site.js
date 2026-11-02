@@ -289,8 +289,8 @@ if (!securityPath.security || !securityPath.security.some(item => item.ReviewerB
 if (!securityPath.description.includes("never returns raw key material") || !securityPath.description.includes("read-only")) {
   throw new Error("Security observability contract must disclose its sanitized read-only boundary.");
 }
-const sitemap = fs.readFileSync(path.join(site, "sitemap.xml"), "utf8");
-if (!sitemap.includes("https://hanyeolhui09twinx-art.github.io/custos-ai/security-ops.html")) {
+const opsSitemap = fs.readFileSync(path.join(site, "sitemap.xml"), "utf8");
+if (!opsSitemap.includes("https://hanyeolhui09twinx-art.github.io/custos-ai/security-ops.html")) {
   throw new Error("Sitemap is missing Security Operations.");
 }
 if (!openApi.components.securitySchemes.AgentBearer || !openApi.components.securitySchemes.ReviewerBearer) {
