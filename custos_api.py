@@ -84,7 +84,7 @@ def create_server(
                     raise ValueError("CUSTOS_DISPATCH_KEYS must be a non-empty JSON object.")
                 dispatch_signing_keys = {}
                 for key_id, key_hex in encoded_keys.items():
-                    if not isinstance(key_id, str) or not key_id or not isinstance(key_hex, str):
+                    if not isinstance(key_id, str) or not IDENTIFIER_RE.fullmatch(key_id) or not isinstance(key_hex, str):
                         raise ValueError("CUSTOS_DISPATCH_KEYS contains an invalid entry.")
                     try:
                         key_value = bytes.fromhex(key_hex)
