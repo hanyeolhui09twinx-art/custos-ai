@@ -191,6 +191,15 @@ if (!developerDocs.includes("BLOCK") || !developerDocs.includes("HTTP 200")) thr
 for (const phrase of ["/v1/requests", "/v1/approvals", "request_id", "research_db", "mock execution adapter", "Do not enter production credentials"]) {
   if (!developerDocs.toLowerCase().includes(phrase.toLowerCase())) throw new Error("Developer Docs is missing an implementation detail: " + phrase);
 }
+if (!css.includes(".reveal{opacity:1;transform:none}") || !css.includes(".js-motion .reveal{opacity:0")) {
+  throw new Error("Reveal animations must not hide content when JavaScript is unavailable.");
+}
+if (!js.includes('root.classList.add("js-motion")')) {
+  throw new Error("Motion enhancement must be enabled only after JavaScript starts.");
+}
+if (!css.includes("@media(forced-colors:active)") || !css.includes("outline:2px solid Highlight")) {
+  throw new Error("Forced-colors mode must retain visible keyboard focus.");
+}
 if (!css.includes(".code-panel pre{") || !css.includes("@media(max-width:760px){.code-head")) {
   throw new Error("Developer Docs code panels must support responsive horizontal scrolling.");
 }
@@ -325,7 +334,7 @@ const singleResults = {
 };
 const keyListeners = {};
 const fakeDocument = {
-  documentElement: {lang: "ko"},
+  documentElement: {lang: "ko", classList: {add: function() {}}},
   body: {getAttribute: name => name === "data-page" ? "home" : null},
   querySelectorAll: selector => selectorResults[selector] || [],
   querySelector: selector => singleResults[selector] || null,
