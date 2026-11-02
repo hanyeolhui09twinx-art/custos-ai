@@ -148,3 +148,18 @@
 .term-card p{font-size:10px;line-height:1.8;color:var(--muted);margin:0}
 @media(max-width:760px){.glossary-heading{display:block}.term-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:460px){.term-grid{grid-template-columns:1fr}}
+
+
+/* Conditional routing: human review is a policy outcome, not a mandatory stage. */
+.flow-routing{padding:10px 12px;background:#102b37;border:1px solid #4a626d}
+.flow-routing-head{display:flex;justify-content:space-between;gap:12px;color:#afc0ba;font:8px var(--mono);letter-spacing:.1em;margin-bottom:8px}
+.flow-outcomes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.flow-outcome{min-width:0;padding:8px 7px;background:#172f3d;border:1px solid #435b69}
+.flow-outcome strong{display:block;font:8px var(--mono);letter-spacing:.02em;overflow-wrap:anywhere}
+.flow-outcome small{display:block;color:#a8b8b4;font:7px/1.5 var(--mono);margin-top:4px}
+.flow-outcome.allow strong{color:#8bc39b}
+.flow-outcome.review strong{color:#edc17f}
+.flow-outcome.block strong{color:#e18a80}
+.flow-routing-note{margin:8px 0 0;color:#b2c0ba;font-size:8px;line-height:1.65}
+@media(max-width:760px){.flow-routing-head{font-size:7px}.flow-outcome strong{font-size:7px}}
+@media(max-width:460px){.flow-outcomes{grid-template-columns:1fr}.flow-outcome{display:grid;grid-template-columns:minmax(112px,.65fr) 1fr;align-items:center;gap:8px}.flow-outcome small{margin-top:0}}
