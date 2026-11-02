@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import replace
 from concurrent.futures import ThreadPoolExecutor
@@ -12,6 +13,7 @@ import urllib.request
 from pathlib import Path
 
 from audit_log import AuditLog
+from keyring_audit import KeyRingLifecycle
 from custos_api import create_server
 from custos_gateway import (
     ActionRequest,
@@ -472,14 +474,28 @@ class APITestCase(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         root = Path(self.temp.name)
+        self.root = root
+        self.db_path = root / "approvals.sqlite3"
+        self.audit_path = root / "audit.jsonl"
+        self.provider_db_path = root / "provider-replay.sqlite3"
+        self.provider_audit_path = root / "provider-audit.jsonl"
+        self.gateway = CustosGateway(
+            store=ApprovalStore(self.db_path),
+            audit_log=AuditLog(str(self.audit_path)),
+            dispatch_signing_keys={"gateway-v1": b"g" * 32},
+            active_dispatch_key_id="gateway-v1",
+        )
         self.server = create_server(
             agent_tokens={
                 "research_agent": self.AGENT_TOKEN,
                 "other_agent": self.OTHER_TOKEN,
             },
             reviewer_token=self.REVIEWER_TOKEN,
-            db_path=root / "approvals.sqlite3",
-            audit_path=root / "audit.jsonl",
+            db_path=self.db_path,
+            audit_path=self.audit_path,
+            provider_db_path=self.provider_db_path,
+            provider_audit_path=self.provider_audit_path,
+            gateway=self.gateway,
             port=0,
         )
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -565,6 +581,108 @@ class APITestCase(unittest.TestCase):
         )
         self.assertEqual(status, 401)
         self.assertIn("error", payload)
+
+    def test_security_overview_requires_reviewer_and_returns_sanitized_key_state(self) -> None:
+        status, unauthorized = self.request("GET", "/v1/security/overview")
+        self.assertEqual(status, 401)
+        self.assertIn("error", unauthorized)
+
+        status, agent_denied = self.request(
+            "GET", "/v1/security/overview", token=self.AGENT_TOKEN
+        )
+        self.assertEqual(status, 401)
+
+        gateway_v2 = b"g" * 32
+        KeyRingLifecycle(self.db_path, AuditLog(str(self.audit_path)), "gateway").observe(
+            {"gateway-v2": hashlib.sha256(gateway_v2).hexdigest()}, "gateway-v2"
+        )
+        provider_v1 = b"p" * 32
+        provider_lifecycle = KeyRingLifecycle(
+            self.provider_db_path, AuditLog(str(self.provider_audit_path)), "provider"
+        )
+        provider_lifecycle.observe(
+            {"provider-v1": hashlib.sha256(provider_v1).hexdigest()}, "provider-v1"
+        )
+        provider_lifecycle.observe(
+            {"provider-v2": hashlib.sha256(b"q" * 32).hexdigest()}, "provider-v2"
+        )
+        self.gateway.audit_log.record(
+            "REQUEST_RECEIVED", {"password": "audit-sensitive-not-returned"}
+        )
+
+        status, overview = self.request(
+            "GET", "/v1/security/overview", token=self.REVIEWER_TOKEN
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(overview["components"]["gateway"]["status"], "tracked")
+        # The endpoint reports current observed SQLite key state, not stale in-memory
+        # gateway signer state; a process restart is required to apply config changes.
+        self.assertEqual(overview["components"]["gateway"]["active_key_id"], "gateway-v2")
+        self.assertEqual(
+            overview["components"]["gateway"]["accepted_key_ids"], ["gateway-v2"]
+        )
+        self.assertEqual(overview["components"]["provider"]["active_key_id"], "provider-v2")
+        self.assertEqual(
+            overview["components"]["provider"]["accepted_key_ids"], ["provider-v2"]
+        )
+        self.assertEqual(
+            overview["components"]["provider"]["revoked_key_ids"], ["provider-v1"]
+        )
+        self.assertEqual(overview["components"]["provider"]["audit_integrity"], "valid")
+        event_names = {event["event"] for event in overview["events"]}
+        self.assertIn("DISPATCH_KEY_REVOKED", event_names)
+        serialized = json.dumps(overview)
+        self.assertNotIn(provider_v1.hex(), serialized)
+        self.assertNotIn(hashlib.sha256(provider_v1).hexdigest(), serialized)
+        self.assertNotIn("audit-sensitive-not-returned", serialized)
+        self.assertNotIn("fingerprint", serialized)
+
+    def test_security_overview_supports_component_and_event_filters(self) -> None:
+        lifecycle = KeyRingLifecycle(
+            self.provider_db_path, AuditLog(str(self.provider_audit_path)), "provider"
+        )
+        lifecycle.observe(
+            {"provider-active": hashlib.sha256(b"x" * 32).hexdigest()}, "provider-active"
+        )
+        status, payload = self.request(
+            "GET",
+            "/v1/security/overview?component=provider&event=DISPATCH_KEYRING_INITIALIZED&limit=1",
+            token=self.REVIEWER_TOKEN,
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(list(payload["components"]), ["provider"])
+        self.assertEqual(len(payload["events"]), 1)
+        self.assertEqual(payload["events"][0]["event"], "DISPATCH_KEYRING_INITIALIZED")
+        self.assertEqual(payload["filters"]["limit"], 1)
+
+        status, invalid = self.request(
+            "GET", "/v1/security/overview?component=provider&event=REQUEST_RECEIVED",
+            token=self.REVIEWER_TOKEN,
+        )
+        self.assertEqual(status, 400)
+        self.assertIn("Unsupported", invalid["error"])
+
+        status, invalid_limit = self.request(
+            "GET", "/v1/security/overview?limit=201", token=self.REVIEWER_TOKEN
+        )
+        self.assertEqual(status, 400)
+        self.assertIn("limit", invalid_limit["error"])
+
+    def test_security_overview_reports_invalid_audit_chain_without_events(self) -> None:
+        self.gateway.audit_log.record("DISPATCH_KEY_REVOKED", {
+            "component": "gateway", "key_id": "tampered-key",
+            "reason": "removed_from_configured_key_ring",
+        })
+        content = self.audit_path.read_text(encoding="utf-8")
+        self.audit_path.write_text(content.replace("tampered-key", "changed-key"), encoding="utf-8")
+        status, payload = self.request(
+            "GET", "/v1/security/overview?component=gateway", token=self.REVIEWER_TOKEN
+        )
+        self.assertEqual(status, 200)
+        gateway_state = payload["components"]["gateway"]
+        self.assertEqual(gateway_state["audit_integrity"], "invalid")
+        self.assertEqual(gateway_state["events"], [])
+        self.assertEqual(gateway_state["revoked_key_ids"], [])
 
     def test_request_identity_is_derived_from_bearer_token(self) -> None:
         status, payload = self.request(
