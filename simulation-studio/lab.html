@@ -82,7 +82,7 @@
 <section class="page hidden" id="page-agents">
   <div class="pagehead"><div><div class="eyebrow">LAB 03 / DISTRIBUTED AUTHORITY</div><h1>Multi-Agent Composer</h1><p>여러 Agent의 제안이 교차할 때 권한·실행 게이트·정책이 일관되게 적용되는지 실험합니다.</p></div><button class="btn primary" id="runAgents">▶ Run multi-agent test</button></div>
   <div class="grid agentgrid" id="agentCards"></div>
-  <div class="grid layout2" style="margin-top:15px"><div class="card section"><div class="sectionhead"><h2>Concurrent event plan</h2><span>INTERLEAVED REQUESTS</span></div><div class="timeline" id="agentPlan"></div><div class="actions" style="margin-top:14px"><button class="btn" id="resetAgents">Reset agent states</button><button class="btn" id="conflictPreset">Load conflict case</button></div></div><div class="card section"><div class="sectionhead"><h2>Conflict analysis</h2><span id="agentStatus">READY</span></div><div id="agentOutput" class="empty"><div><div class="eicon">◎</div>실행 버튼을 눌러 Agent 간 권한 충돌을 분석하세요.</div></div></div></div>
+  <div class="grid layout2" style="margin-top:15px"><div class="card section"><div class="sectionhead"><h2>Deterministic request plan</h2><span>DETERMINISTIC EVALUATION</span></div><div class="timeline" id="agentPlan"></div><div class="notice" style="margin-top:12px;margin-bottom:0">이 화면은 요청을 순차적으로 평가합니다. 실제 동시 실행이나 경쟁 상태 테스트가 아닙니다.</div><div class="actions" style="margin-top:14px"><button class="btn" id="resetAgents">Reset agent states</button><button class="btn" id="conflictPreset">Load conflict case</button></div></div><div class="card section"><div class="sectionhead"><h2>Conflict analysis</h2><span id="agentStatus">READY</span></div><div id="agentOutput" class="empty"><div><div class="eicon">◎</div>실행 버튼을 눌러 Agent 간 권한 충돌을 분석하세요.</div></div></div></div>
 </section>
 <section class="page hidden" id="page-policies">
   <div class="pagehead"><div><div class="eyebrow">CONTROL PLANE / POLICY CONFIGURATION</div><h1>Policy & Authority</h1><p>이 브라우저 시뮬레이터가 사용하는 정책과 Agent별 권한 범위를 조정합니다.</p></div><button class="btn" id="restoreDefaults">↺ Restore defaults</button></div>
@@ -99,6 +99,313 @@
 </div>
 <div id="toast" class="toast hidden" role="status"></div>
 <script>
+(()=>{
+'use strict';
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const now=()=>new Date().toISOString();
+function displayTime(value){let d=new Date(value);if(Number.isNaN(d.getTime())){const m=String(value||'').match(/(\d{1,2})시\s*(\d{1,2})분\s*(\d{1,2})초/);if(m){d=new Date();d.setHours(+m[1],+m[2],+m[3],0)}}return Number.isNaN(d.getTime())?String(value||''):d.toLocaleTimeString(language==='ko'?'ko-KR':'en-US',{hour12:false});}
+const uid=()=>('CS-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6)).toUpperCase();
+const scenarios=[
+{id:'read',name:'Read-only database query',desc:'등록된 읽기 전용 데이터 조회',action:'read_database',resource:'research_db',params:{query:'market_trends'},expect:'ALLOW'},
+{id:'email',name:'Send email (approval required)',desc:'외부 효과가 있는 이메일 작업',action:'send_email',resource:'company_email',agent:'operator',params:{to:'review@example.test',subject:'Review request'},expect:'PENDING_APPROVAL'},
+{id:'delete',name:'Delete production record',desc:'고위험 데이터 삭제 요청',action:'delete_record',resource:'production_db',params:{record_id:'prod-2048'},expect:'BLOCK'},
+{id:'override',name:'Agent policy override attempt',desc:'Agent가 통제 정책 변경 시도',action:'modify_policy',resource:'control_plane',params:{policy:'allow_all'},expect:'BLOCK'},
+{id:'unknown',name:'Unknown tool invocation',desc:'등록되지 않은 Action 호출',action:'execute_shell',resource:'host_shell',params:{command:'echo test'},expect:'BLOCK'},
+{id:'scope',name:'Out-of-scope resource',desc:'Agent 허용 범위 밖의 리소스 요청',action:'read_database',resource:'production_db',params:{query:'customer_records'},expect:'BLOCK'},
+{id:'suspended',name:'Suspended agent request',desc:'정지된 Agent의 실행 요청',action:'read_database',resource:'research_db',params:{query:'market_trends'},agent:'suspended',expect:'BLOCK'},
+{id:'paused',name:'Global execution gate paused',desc:'시스템 일시정지 중 요청',action:'read_database',resource:'research_db',params:{query:'market_trends'},gate:'paused',expect:'STOPPED'},
+{id:'replay',name:'Duplicate request ID',desc:'이미 사용한 요청 식별자 재사용',action:'read_database',resource:'research_db',params:{query:'market_trends'},duplicate:true,expect:'BLOCK'},
+{id:'stale',name:'Stale approval token',desc:'권한 버전이 바뀐 승인 토큰',action:'send_email',resource:'company_email',agent:'operator',params:{to:'review@example.test'},stale:true,expect:'BLOCK'},
+{id:'rate',name:'Rate spike / request burst',desc:'짧은 시간 내 요청 과다 발생',action:'read_database',resource:'research_db',params:{query:'market_trends',burst:99},rate:true,expect:'BLOCK'},
+{id:'tamper',name:'Parameter tampering after approval',desc:'승인된 요청의 파라미터 변경',action:'send_email',resource:'company_email',agent:'operator',params:{to:'review@example.test',subject:'Original'},tamper:true,expect:'BLOCK'},
+{id:'stop',name:'Long-running operation stop',desc:'실행 중 사람의 중지 명령',action:'generate_report',resource:'analytics_workspace',params:{report:'quarterly'},long:true,expect:'STOPPED'}
+];
+const initialState=()=>({runs:[],gate:true,approval:true,strict:true,paused:false,policies:{read_database:'allow',send_email:'approval',generate_report:'allow',delete_record:'deny',modify_policy:'deny',execute_shell:'deny'},agents:{researcher:{name:'Research Agent',status:'active',scopes:['read_database:research_db','generate_report:analytics_workspace']},operator:{name:'Operator Agent',status:'active',scopes:['send_email:company_email']},analyst:{name:'Analyst Agent',status:'active',scopes:['read_database:research_db']}}});
+let state;try{state={...initialState(),...JSON.parse(localStorage.getItem('custosInstantState')||'{}')};state.policies={...initialState().policies,...(state.policies||{})};state.agents={...initialState().agents,...(state.agents||{})};state.runs=Array.isArray(state.runs)?state.runs:[]}catch(e){state=initialState()}
+let selectedScenario='read',steps=[],pending=null,selectedRun=null,agentPlan=[{agent:'researcher',action:'read_database',resource:'research_db',label:'Researcher requests read access'},{agent:'operator',action:'send_email',resource:'company_email',label:'Operator requests email dispatch'},{agent:'analyst',action:'read_database',resource:'research_db',label:'Analyst requests concurrent read'},{agent:'researcher',action:'delete_record',resource:'production_db',label:'Researcher attempts restricted delete'}];
+function save(){try{localStorage.setItem('custosInstantState',JSON.stringify(state))}catch(e){/* storage may be disabled for file:// or privacy-restricted browser contexts; keep this session usable in memory */}renderStats()}
+function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.remove('hidden');clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.classList.add('hidden'),2400)}
+function statusLabel(s){return s==='ALLOW'?'ALLOW':s==='BLOCK'?'BLOCK':s==='PENDING_APPROVAL'?'PENDING':s==='STOPPED'?'STOPPED':s}
+function nav(page){$$('.page').forEach(p=>p.classList.toggle('hidden',p.id!=='page-'+page));$$('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===page));const map={dashboard:'Overview',scenarios:'Scenario Testing',experiments:'Experiment Engine',agents:'Multi-Agent Composer',policies:'Policy & Authority',history:'Run History'};$('#crumb').textContent=map[page]||page;$('#sidebar').classList.remove('open');if(page==='history')renderHistory();if(page==='policies')renderPolicies();if(page==='agents')renderAgents()}
+function record(run){state.runs.unshift(run);state.runs=state.runs.slice(0,200);save();renderRecent();renderHistory()}
+function decide({agent='researcher',action,resource,scenario=null,requestId=uid(),params={},flags={}}){const traces=[];const a=state.agents[agent]||{status:'unknown',scopes:[]};const add=(name,detail,ok=true)=>traces.push({name,detail,ok,time:now()});add('Identity check',`Actor: ${agent} · status: ${a.status}`,a.status==='active');
+if(state.paused||!state.gate){add('Execution gate','Global gate is paused. New execution is not admitted.',false);return{decision:'STOPPED',reason:'GLOBAL_GATE_PAUSED',message:'시스템 실행 게이트가 일시정지되어 요청을 받지 않았습니다.',traces}}if(a.status!=='active'){add('Agent status','Agent is suspended or unavailable.',false);return{decision:'BLOCK',reason:'AGENT_NOT_ACTIVE',message:'정지되었거나 유효하지 않은 Agent입니다.',traces}}
+if(flags.duplicate){add('Replay protection','Duplicate request ID detected.',false);return{decision:'BLOCK',reason:'DUPLICATE_REQUEST_ID',message:'중복 요청 ID가 탐지되었습니다.',traces}}if(flags.rate){add('Rate control','Request burst exceeded the simulated threshold.',false);return{decision:'BLOCK',reason:'RATE_LIMIT_EXCEEDED',message:'요청 빈도 제한을 초과했습니다.',traces}}
+const scope=`${action}:${resource}`;if(!a.scopes.includes(scope)){add('Authority scope',`Scope ${scope} is not assigned to ${agent}.`,false);return{decision:'BLOCK',reason:'SCOPE_MISMATCH',message:`Agent에 ${scope} 권한이 부여되지 않았습니다.`,traces}}
+const pol=state.policies[action]??(state.strict?'deny':'allow');add('Policy lookup',`${action} → ${pol}`,pol!=='deny');if(pol==='deny'){return{decision:'BLOCK',reason:'POLICY_DENY',message:'현재 정책이 이 작업을 명시적으로 거부합니다.',traces}}
+if(flags.stale){add('Approval freshness','Approval version is stale.',false);return{decision:'BLOCK',reason:'STALE_APPROVAL',message:'승인 시점 이후 권한 버전이 변경되어 승인이 무효입니다.',traces}}
+if(flags.tamper){add('Request binding','Request parameters do not match the approved payload.',false);return{decision:'BLOCK',reason:'REQUEST_MISMATCH',message:'승인된 요청과 현재 파라미터가 일치하지 않습니다.',traces}}
+if(pol==='approval'&&state.approval){add('Human approval','Human decision is required before dispatch.',true);return{decision:'PENDING_APPROVAL',reason:'HUMAN_APPROVAL_REQUIRED',message:'사람의 승인이 필요합니다. 승인 전에는 실행되지 않습니다.',traces}}
+add('Final authorization','Current identity, scope and policy checks passed.',true);add('Dispatch simulation','Virtual action completed. No external side effect was performed.',true);return{decision:'ALLOW',reason:'POLICY_ALLOWED',message:'정책과 권한 검증을 통과했습니다. 가상 실행만 완료했습니다.',traces}}
+function scenarioById(id){return scenarios.find(s=>s.id===id)||scenarios[0]}
+function renderScenarioList(){$('#scenarioList').innerHTML=scenarios.map(s=>`<div class="scenario ${s.id===selectedScenario?'selected':''}" data-scenario="${s.id}"><div><b>${s.name}</b><small>${s.desc}</small></div><span class="tag">${s.action}</span></div>`).join('');$$('[data-scenario]').forEach(el=>el.onclick=()=>selectScenario(el.dataset.scenario))}
+function selectScenario(id){selectedScenario=id;const s=scenarioById(id);$('#scenarioResource').value=s.resource;$('#scenarioParams').value=JSON.stringify(s.params,null,2);$('#scenarioAgent').value=s.agent==='suspended'?'researcher':(s.agent||'researcher');$('#requestId').value=s.duplicate?'req-demo-replay':`req-${id}-${Math.random().toString(36).slice(2,6)}`;renderScenarioList()}
+function renderTrace(result){return `<div class="trace">${result.traces.map((t,i)=>`<div class="traceitem"><span class="bullet">${t.ok?'✓':'!'}</span><span><b>${t.name}</b><br>${t.detail}</span><small data-timestamp="${t.time}">${displayTime(t.time)}</small></div>`).join('')}</div>`}
+function resultHtml(run,actions=true){const cl=run.decision==='ALLOW'?'allow':run.decision==='BLOCK'?'block':run.decision==='PENDING_APPROVAL'?'pending':'stop';let actionHtml='';if(actions&&run.decision==='PENDING_APPROVAL')actionHtml=`<div class="actions" style="margin:12px 0"><button class="btn success small" id="approvePending">✓ Approve & simulate dispatch</button><button class="btn danger small" id="denyPending">✕ Deny request</button></div>`;if(actions&&run.decision==='STOPPED'&&run.long)actionHtml=`<div class="actions" style="margin:12px 0"><button class="btn danger small" id="stopPending">Ⅱ Confirm stop</button></div>`;return `<div class="decision"><div class="big ${cl}">${statusLabel(run.decision)}</div><div><b>${run.reason}</b><p>${run.message}</p></div></div>${actionHtml}${renderTrace(run)}`}
+function runScenario(){
+ const s=scenarioById(selectedScenario);
+ let params;
+ try{params=JSON.parse($('#scenarioParams').value||'{}')}catch(e){toast('Parameters must be valid JSON');return}
+ const flags={duplicate:s.duplicate,stale:s.stale,tamper:s.tamper,rate:s.rate};
+ const previousPaused=state.paused;
+ const previousResearcherStatus=state.agents.researcher.status;
+ let evaluated;
+ try{
+  if(s.gate==='paused')state.paused=true;
+  if(s.agent==='suspended')state.agents.researcher.status='suspended';
+  evaluated=decide({agent:$('#scenarioAgent').value,action:s.action,resource:$('#scenarioResource').value,params,flags});
+ }finally{
+  state.paused=previousPaused;
+  state.agents.researcher.status=previousResearcherStatus;
+ }
+ if(s.long&&evaluated.decision==='ALLOW'){
+  const dispatchTrace=evaluated.traces.find(t=>t.name==='Dispatch simulation');
+  if(dispatchTrace){
+   dispatchTrace.name='Long-running operation';
+   dispatchTrace.detail='Virtual operation entered a running state; completion was not recorded before the stop checkpoint.';
+  }
+  evaluated.decision='STOPPED';
+  evaluated.reason='HUMAN_STOP';
+  evaluated.message='실행 중 사람의 중지 명령이 전달되어 가상 작업이 완료 전에 중단되었습니다.';
+  evaluated.traces.push({name:'Stop checkpoint',detail:'Stop signal observed before simulated completion.',ok:true,time:now()});
+ }
+ const run={id:uid(),requestId:$('#requestId').value||uid(),kind:'scenario',scenario:s.name,scenarioId:s.id,agent:$('#scenarioAgent').value,action:s.action,resource:$('#scenarioResource').value,params,created:new Date().toISOString(),long:!!s.long,...evaluated};
+ pending=run;
+ record(run);
+ $('#scenarioRunId').textContent=run.id;
+ $('#scenarioResult').className='';
+ $('#scenarioResult').innerHTML=resultHtml(run);
+ wirePending();
+ toast(`Decision: ${run.decision}`);
+}
+function reviewRun(id,decision){
+ const run=state.runs.find(x=>x.id===id);
+ if(!run||run.decision!=='PENDING_APPROVAL')return;
+ if(decision==='approve'){
+  const a=state.agents[run.agent];
+  const stillValid=state.gate&&!state.paused&&state.approval&&a?.status==='active'&&a.scopes.includes(`${run.action}:${run.resource}`)&&state.policies[run.action]==='approval';
+  if(!stillValid){
+   run.decision='BLOCK';
+   run.reason='FINAL_REVALIDATION_FAILED';
+   run.message='승인 후 최종 재검증에서 현재 권한 또는 정책이 일치하지 않아 실행이 차단되었습니다.';
+   run.traces.push({name:'Final revalidation',detail:'Current gate, approval control, identity, scope, or policy no longer matches.',ok:false,time:now()});
+  }else{
+   run.decision='ALLOW';
+   run.reason='HUMAN_APPROVED';
+   run.message='사람의 승인을 받은 뒤 최종 권한 재검증을 통과했습니다. 외부 효과 없이 가상 실행을 완료했습니다.';
+   run.traces.push(
+    {name:'Human approval',detail:'Approved by operator in this browser simulation.',ok:true,time:now()},
+    {name:'Final revalidation',detail:'Current gate, approval control, identity, scope and policy still match.',ok:true,time:now()},
+    {name:'Dispatch simulation',detail:'Virtual dispatch only; no external side effect.',ok:true,time:now()}
+   );
+  }
+ }else{
+  run.decision='BLOCK';
+  run.reason='HUMAN_DENIED';
+  run.message='사람이 요청을 거부했습니다. 실행되지 않았습니다.';
+  run.traces.push({name:'Human decision',detail:'Request denied by operator.',ok:false,time:now()});
+ }
+ updateRun(run);
+ if(pending?.id===run.id){pending=run;renderPendingResult();}
+ if(selectedRun===run.id)showRun(run.id);
+ toast(decision==='approve'?'Approval decision recorded':'Request denied');
+}
+function wirePending(){
+ if($('#approvePending'))$('#approvePending').onclick=()=>{if(pending)reviewRun(pending.id,'approve')};
+ if($('#denyPending'))$('#denyPending').onclick=()=>{if(pending)reviewRun(pending.id,'deny')};
+ if($('#stopPending'))$('#stopPending').onclick=()=>{
+  if(!pending)return;
+  pending.decision='STOPPED';
+  pending.reason='HUMAN_STOP';
+  pending.message='사람의 중지 명령으로 가상 실행이 중단되었습니다.';
+  pending.traces.push({name:'Stop signal',detail:'Stop acknowledged by the simulator.',ok:true,time:now()});
+  updateRun(pending);
+  renderPendingResult();
+ };
+}
+function updateRun(run){const i=state.runs.findIndex(x=>x.id===run.id);if(i>=0)state.runs[i]=run;save();renderRecent();renderHistory()}
+function renderPendingResult(){$('#scenarioResult').innerHTML=resultHtml(pending,false);$('#scenarioRunId').textContent=pending.id;}
+function renderStats(){const r=state.runs;$('#statRuns').textContent=r.length;$('#statAllowed').textContent=r.filter(x=>x.decision==='ALLOW').length;$('#statBlocked').textContent=r.filter(x=>x.decision==='BLOCK'||x.decision==='STOPPED').length;$('#statPending').textContent=r.filter(x=>x.decision==='PENDING_APPROVAL').length;$('#gateToggle').classList.toggle('on',state.gate&&!state.paused);$('#approvalToggle').classList.toggle('on',state.approval);$('#strictToggle').classList.toggle('on',state.strict);$('#gateToggle2')?.classList.toggle('on',state.gate&&!state.paused);$('#approvalToggle2')?.classList.toggle('on',state.approval);$('#strictToggle2')?.classList.toggle('on',state.strict)}
+function renderRecent(){const rows=state.runs.slice(0,5);$('#recentTable').innerHTML=rows.length?`<table class="table"><thead><tr><th>SCENARIO / RUN</th><th>AGENT</th><th>ACTION</th><th>DECISION</th><th></th></tr></thead><tbody>${rows.map(r=>`<tr><td><b>${r.scenario||r.kind}</b><div class="muted">${r.id}</div></td><td>${r.agent}</td><td>${r.action||'sequence'}</td><td><span class="status ${r.decision==='ALLOW'?'allow':r.decision==='BLOCK'?'block':r.decision==='PENDING_APPROVAL'?'pending':'stop'}">${statusLabel(r.decision)}</span></td><td><button class="btn small" data-view-run="${r.id}">View</button></td></tr>`).join('')}</tbody></table>`:`<div class="empty" style="min-height:90px">아직 실행 이력이 없습니다. 첫 시뮬레이션을 실행하세요.</div>`;$$('[data-view-run]').forEach(b=>b.onclick=()=>showRun(b.dataset.viewRun))}
+function renderPolicies(){const names={read_database:'Read database',send_email:'Send email',generate_report:'Generate report',delete_record:'Delete record',modify_policy:'Modify policy',execute_shell:'Execute shell'};$('#policyRows').innerHTML=Object.entries(state.policies).map(([k,v])=>`<div class="controlrow"><div><b>${names[k]||k}</b><small>${k}</small></div><select data-policy="${k}" style="background:#0d1823;border:1px solid #2a4054;color:var(--text);border-radius:8px;padding:7px"><option value="allow" ${v==='allow'?'selected':''}>ALLOW</option><option value="approval" ${v==='approval'?'selected':''}>REQUIRE APPROVAL</option><option value="deny" ${v==='deny'?'selected':''}>DENY</option></select></div>`).join('');$$('[data-policy]').forEach(sel=>sel.onchange=()=>{state.policies[sel.dataset.policy]=sel.value;save();toast(`${sel.dataset.policy} policy updated`) });$('#profileRows').innerHTML=Object.entries(state.agents).map(([id,a])=>`<div class="controlrow"><div><b>${a.name}</b><small>${id} · ${a.status.toUpperCase()}</small><div>${a.scopes.map(s=>`<span class="scope">${s}</span>`).join('')}</div></div><button class="btn small ${a.status==='active'?'danger':'success'}" data-agent-toggle="${id}">${a.status==='active'?'Suspend':'Reinstate'}</button></div>`).join('');$$('[data-agent-toggle]').forEach(b=>b.onclick=()=>{let a=state.agents[b.dataset.agentToggle];a.status=a.status==='active'?'suspended':'active';save();renderPolicies();renderAgents();toast(`${b.dataset.agentToggle}: ${a.status}`)});renderStats()}
+function renderHistory(){if(!$('#historyTable'))return;const q=($('#historySearch')?.value||'').toLowerCase(),f=$('#historyFilter')?.value||'all';const rows=state.runs.filter(r=>(f==='all'||r.decision===f)&&[r.id,r.scenario,r.agent,r.action].join(' ').toLowerCase().includes(q));$('#historyTable').innerHTML=rows.length?`<table class="table"><thead><tr><th>RUN ID</th><th>SCENARIO</th><th>AGENT</th><th>DECISION</th><th>TIME</th><th></th></tr></thead><tbody>${rows.map(r=>`<tr><td>${r.id}</td><td>${r.scenario||r.kind}</td><td>${r.agent||'—'}</td><td><span class="status ${r.decision==='ALLOW'?'allow':r.decision==='BLOCK'?'block':r.decision==='PENDING_APPROVAL'?'pending':'stop'}">${statusLabel(r.decision)}</span></td><td>${new Date(r.created).toLocaleString(language==='ko'?'ko-KR':'en-US')}</td><td><button class="btn small" data-view-run="${r.id}">View</button></td></tr>`).join('')}</tbody></table>`:`<div class="empty" style="min-height:120px">검색 조건에 맞는 실행 기록이 없습니다.</div>`;$$('[data-view-run]').forEach(b=>b.onclick=()=>showRun(b.dataset.viewRun))}
+function showRun(id){
+ const r=state.runs.find(x=>x.id===id);
+ if(!r)return;
+ selectedRun=id;
+ $('#historyDetailId').textContent=r.id;
+ $('#historyDetail').className='';
+ const actions=r.decision==='PENDING_APPROVAL'
+  ?'<div class="actions" style="margin:12px 0"><button class="btn success small" id="approveHistory">✓ Approve & simulate dispatch</button><button class="btn danger small" id="denyHistory">✕ Deny request</button></div>'
+  :'';
+ $('#historyDetail').innerHTML=`<div class="decision"><div class="big ${r.decision==='ALLOW'?'allow':r.decision==='BLOCK'?'block':r.decision==='PENDING_APPROVAL'?'pending':'stop'}">${statusLabel(r.decision)}</div><div><b>${r.scenario||r.kind}</b><p>${r.message||'Sequence experiment recorded.'}</p><p class="hint">Agent: ${r.agent||'multiple'} · Action: ${r.action||'sequence'} · Resource: ${r.resource||'—'}</p></div></div>${actions}${r.traces?renderTrace(r):'<div class="hint">상세 단계 결과가 저장되었습니다.</div>'}`;
+ if(r.decision==='PENDING_APPROVAL'){
+  $('#approveHistory').onclick=()=>reviewRun(r.id,'approve');
+  $('#denyHistory').onclick=()=>reviewRun(r.id,'deny');
+ }
+ nav('history');
+}
+function addStep(){if(steps.length>=20){toast('Maximum 20 steps');return}steps.push($('#stepSelect').value);renderSteps()}
+const stepNames={propose_read:'Agent proposes read_database',propose_email:'Agent proposes send_email',approve:'Human approves pending request',deny:'Human denies pending request',revoke:'Revoke approval / authority',policy_deny:'Policy change: deny read_database',policy_allow:'Policy change: allow read_database',pause:'Pause execution gate',resume:'Resume execution gate',suspend:'Suspend researcher agent',reinstate:'Reinstate researcher agent',stop:'Global stop request'};
+function renderSteps(){$('#stepList').innerHTML=steps.length?steps.map((s,i)=>`<div class="step"><span class="n">${String(i+1).padStart(2,'0')}</span><span style="font-size:11px">${stepNames[s]}</span><button class="remove" data-remove-step="${i}">✕</button></div>`).join(''):`<div class="empty" style="min-height:85px">실험 이벤트를 추가하세요.</div>`;$$('[data-remove-step]').forEach(b=>b.onclick=()=>{steps.splice(+b.dataset.removeStep,1);renderSteps()})}
+function runExperiment(){if(!steps.length){toast('Add at least one event');return}const trace=[];let p=null,decision='ALLOW';const push=(n,d,ok=true)=>trace.push({name:n,detail:d,ok,time:now()});steps.forEach((s,i)=>{switch(s){case'propose_read':p=decide({agent:'researcher',action:'read_database',resource:'research_db'});push(`Step ${i+1}: Read proposal`,p.message,p.decision==='ALLOW');decision=p.decision;break;case'propose_email':p=decide({agent:'operator',action:'send_email',resource:'company_email'});push(`Step ${i+1}: Email proposal`,p.message,p.decision==='PENDING_APPROVAL');decision=p.decision;break;case'approve':if(p?.decision==='PENDING_APPROVAL'&&state.gate&&!state.paused&&state.approval&&state.agents.operator.status==='active'&&state.agents.operator.scopes.includes('send_email:company_email')&&state.policies.send_email==='approval'){p.decision='ALLOW';push(`Step ${i+1}: Human approval`,'Approved; final authorization rechecked.',true);decision='ALLOW'}else{push(`Step ${i+1}: Human approval`,'No valid pending request or current authorization failed.',false);decision='BLOCK'}break;case'deny':if(p?.decision==='PENDING_APPROVAL'){p.decision='BLOCK';push(`Step ${i+1}: Human denial`,'Request denied; no dispatch.',true);decision='BLOCK'}else{push(`Step ${i+1}: Human denial`,'No pending request to deny.',false)}break;case'revoke':if(p){p.decision='BLOCK';push(`Step ${i+1}: Revoke`,'Outstanding approval revoked; any later execution must fail.',true);decision='BLOCK'}else push(`Step ${i+1}: Revoke`,'No approval exists.',false);break;case'policy_deny':state.policies.read_database='deny';push(`Step ${i+1}: Policy changed`,'read_database → DENY. Existing proposals require revalidation.',true);if(p?.action==='read_database')decision='BLOCK';break;case'policy_allow':state.policies.read_database='allow';push(`Step ${i+1}: Policy restored`,'read_database → ALLOW.',true);break;case'pause':state.paused=true;push(`Step ${i+1}: Global pause`,'Execution gate paused.',true);decision='STOPPED';break;case'resume':state.paused=false;push(`Step ${i+1}: Resume`,'Execution gate resumed.',true);break;case'suspend':state.agents.researcher.status='suspended';push(`Step ${i+1}: Agent suspended`,'Researcher is no longer active.',true);if(p?.agent==='researcher')decision='BLOCK';break;case'reinstate':state.agents.researcher.status='active';push(`Step ${i+1}: Reinstate`,'Researcher is active again.',true);break;case'stop':state.paused=true;push(`Step ${i+1}: Stop signal`,'Global stop acknowledged; queued actions do not execute.',true);decision='STOPPED';break;}});const run={id:uid(),kind:'experiment',scenario:'Sequential experiment',scenarioId:'sequence',agent:'multiple',action:'sequence',created:new Date().toISOString(),decision,reason:'SEQUENCE_COMPLETED',message:`${steps.length}단계 실험이 완료되었습니다. 최종 상태: ${decision}.`,traces:trace};record(run);$('#experimentStatus').textContent=decision;$('#experimentOutput').className='';$('#experimentOutput').innerHTML=`<div class="decision"><div class="big ${decision==='ALLOW'?'allow':decision==='BLOCK'?'block':'stop'}">${statusLabel(decision)}</div><div><b>${steps.length} steps evaluated</b><p>${run.message}</p></div></div>${renderTrace(run)}`;renderPolicies();toast('Sequence experiment completed')}
+function renderAgents(){$('#agentCards').innerHTML=Object.entries(state.agents).map(([id,a],i)=>`<div class="card agent"><div class="agenthead"><div class="agentname"><span class="agenticon">${['⌘','⚙','◉'][i]}</span>${a.name}</div><span class="status ${a.status==='active'?'allow':'block'}">${a.status.toUpperCase()}</span></div><p>${id} · ${a.status==='active'?'Identity enabled':'Identity suspended'}</p>${a.scopes.map(s=>`<span class="scope">${s}</span>`).join('')}</div>`).join('');$('#agentPlan').innerHTML=agentPlan.map((e,i)=>`<div class="event"><time>STEP ${String(i+1).padStart(2,'0')}</time><div><b>${e.label}</b><small>${e.agent} → ${e.action} @ ${e.resource}</small></div><span class="badge">${e.agent}</span></div>`).join('')}
+function runAgents(){const traces=[];const outcomes=[];agentPlan.forEach((e,i)=>{const d=decide({agent:e.agent,action:e.action,resource:e.resource});outcomes.push({agent:e.agent,action:e.action,decision:d.decision,reason:d.reason});traces.push({name:`${e.agent}: ${e.action}`,detail:`${d.decision} · ${d.reason} · ${d.message}`,ok:d.decision==='ALLOW'||d.decision==='PENDING_APPROVAL',time:now()})});const allowed=outcomes.filter(x=>x.decision==='ALLOW').length,blocked=outcomes.filter(x=>x.decision==='BLOCK').length,pendingN=outcomes.filter(x=>x.decision==='PENDING_APPROVAL').length;const decision=blocked?'BLOCK':pendingN?'PENDING_APPROVAL':'ALLOW';const run={id:uid(),kind:'multi-agent',scenario:'Multi-Agent conflict test',agent:'multiple',action:'concurrent_requests',created:new Date().toISOString(),decision,reason:'MULTI_AGENT_EVALUATED',message:`${outcomes.length}개 요청 평가: ALLOW ${allowed}, BLOCK ${blocked}, PENDING ${pendingN}.`,traces,outcomes};record(run);$('#agentStatus').textContent='COMPLETED';$('#agentOutput').className='';$('#agentOutput').innerHTML=`<div class="grid stats" style="grid-template-columns:repeat(3,1fr);margin-bottom:12px"><div class="stat card"><div class="statlabel">ALLOW</div><div class="statnum" style="color:var(--green)">${allowed}</div></div><div class="stat card"><div class="statlabel">BLOCK</div><div class="statnum" style="color:var(--red)">${blocked}</div></div><div class="stat card"><div class="statlabel">PENDING</div><div class="statnum" style="color:var(--yellow)">${pendingN}</div></div></div>${renderTrace(run)}<div class="notice" style="margin-top:12px;margin-bottom:0">이 뷰는 동기식·순차 평가입니다. 실제 병렬 실행, 경쟁 상태, 동시 승인, 분산 트랜잭션을 시험하지 않습니다. 결과는 결정적 권한 판정 모델입니다.</div>`;toast('Multi-Agent experiment completed')}
+function download(data,name,type='application/json'){const blob=new Blob([data],{type}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),500)}
+function exportAll(){download(JSON.stringify({product:'Custos AI Simulation Studio Instant',mode:'browser-only simulation',exported_at:new Date().toISOString(),state},null,2),'custos-simulation-report.json')}
+// navigation
+$$('#nav button').forEach(b=>b.onclick=()=>nav(b.dataset.page));$$('[data-goto]').forEach(b=>b.onclick=()=>nav(b.dataset.goto));$('#menuBtn').onclick=()=>$('#sidebar').classList.toggle('open');
+// scenario
+$('#runScenario').onclick=runScenario;$('#resetScenario').onclick=()=>selectScenario(selectedScenario);
+// experiment
+$('#addStep').onclick=addStep;$('#clearSteps').onclick=()=>{steps=[];renderSteps()};$('#loadPreset').onclick=()=>{steps=['propose_email','approve','revoke','pause','resume','propose_read'];renderSteps();toast('Revocation test loaded')};$('#runExperiment').onclick=runExperiment;
+// agents
+$('#runAgents').onclick=runAgents;$('#resetAgents').onclick=()=>{Object.values(state.agents).forEach(a=>a.status='active');save();renderAgents();toast('Agent states reset')};$('#conflictPreset').onclick=()=>{agentPlan=[{agent:'researcher',action:'read_database',resource:'research_db',label:'Researcher requests market data'},{agent:'operator',action:'send_email',resource:'company_email',label:'Operator requests email dispatch'},{agent:'researcher',action:'delete_record',resource:'production_db',label:'Researcher attempts production deletion'},{agent:'analyst',action:'read_database',resource:'research_db',label:'Analyst submits concurrent read'}];renderAgents();toast('Conflict case loaded')};
+// global controls
+function toggle(key){if(key==='gate'){if(state.paused){state.paused=false;state.gate=true}else{state.gate=!state.gate}}if(key==='approval')state.approval=!state.approval;if(key==='strict')state.strict=!state.strict;save();renderStats()}[['gateToggle','gate'],['approvalToggle','approval'],['strictToggle','strict'],['gateToggle2','gate'],['approvalToggle2','approval'],['strictToggle2','strict']].forEach(([id,k])=>{const el=$('#'+id);if(el)el.onclick=()=>{toggle(k);renderPolicies()}});$('#pauseAll').onclick=()=>{state.paused=true;save();renderStats();toast('Global execution paused')};$('#resumeAll').onclick=()=>{state.paused=false;state.gate=true;save();renderStats();toast('Execution resumed')};$('#restoreDefaults').onclick=()=>{const d=initialState();state.policies=d.policies;state.agents=d.agents;state.gate=d.gate;state.approval=d.approval;state.strict=d.strict;state.paused=false;save();renderPolicies();renderAgents();toast('Policy defaults restored')};
+// history and exports
+$('#historySearch').oninput=renderHistory;$('#historyFilter').onchange=renderHistory;$('#exportHistory').onclick=exportAll;$('#exportAll').onclick=exportAll;$('#clearHistory').onclick=()=>{if(confirm('이 브라우저에 저장된 모든 시뮬레이션 이력을 삭제할까요?')){state.runs=[];save();renderHistory();renderRecent();$('#historyDetail').className='empty';$('#historyDetail').textContent='이력이 삭제되었습니다.';toast('Run history cleared')}};
+// Bilingual interface: translate visible UI text and dynamic render output.
+const translationPairs = [["Custos AI — 시뮬레이션 스튜디오", "Custos AI — Simulation Studio"], ["SIMULATION STUDIO", "시뮬레이션 스튜디오"], ["WORKSPACE", "작업 공간"], ["Overview", "개요"], ["Scenario Testing", "시나리오 테스트"], ["Experiment Engine", "실험 엔진"], ["Multi-Agent Composer", "멀티 에이전트 구성기"], ["Policy & Authority", "정책 및 권한"], ["Run History", "실행 이력"], ["BROWSER SIMULATION MODE", "브라우저 시뮬레이션 모드"], ["이 페이지는 브라우저 안의 가상 실험 환경입니다. 실제 Agent 도구나 Worker를 호출하지 않습니다.", "This page is a virtual browser-based lab. It does not invoke real Agent tools or Workers."], ["● SANDBOX · LOCAL ONLY", "● 샌드박스 · 로컬 전용"], ["POLICY ENGINE SIMULATOR", "정책 엔진 시뮬레이터"], ["CONTROL PLANE / OVERVIEW", "제어 계층 / 개요"], ["AI의 실행 능력과 실행 권한을 분리하고, 모든 요청을 정책과 사람의 통제 아래에서 실험합니다.", "Separate what AI can do from what it is authorized to do. Test every request under policy and human control."], ["Export report", "보고서 내보내기"], ["New simulation", "새 시뮬레이션"], ["TOTAL SIMULATIONS", "전체 시뮬레이션"], ["이 브라우저에 저장된 실행", "Runs saved in this browser"], ["ALLOWED", "허용됨"], ["정책 조건을 통과한 요청", "Requests that passed policy checks"], ["BLOCKED", "차단됨"], ["거부 또는 실행 전 차단", "Denied or blocked before execution"], ["NEEDS HUMAN", "사람의 결정 필요"], ["사람의 결정이 필요한 요청", "Requests requiring a human decision"], ["Control path", "통제 흐름"], ["Agent proposal", "Agent 제안"], ["Action · Resource · Parameters", "작업 · 리소스 · 매개변수"], ["Custos policy layer", "Custos 정책 계층"], ["Identity · Scope · Risk · Approval", "신원 · 범위 · 위험 · 승인"], ["Human-controlled decision", "사람이 통제하는 결정"], ["Policy validation", "정책 검증"], ["Allowed", "허용"], ["Human approval", "사람 승인"], ["Blocked", "차단"], ["Global controls", "전역 제어"], ["SIMULATED STATE", "시뮬레이션 상태"], ["Execution gate", "실행 게이트"], ["새로운 Agent 실행 요청 허용", "Allow new Agent execution requests"], ["고위험 작업은 승인 후 실행", "Require approval for high-risk actions"], ["Human approval", "사람 승인"], ["Strict scope", "엄격한 권한 범위"], ["등록되지 않은 Action 기본 거부", "Deny unregistered actions by default"], ["Pause all agents", "모든 Agent 일시 중지"], ["Resume", "재개"], ["Experiment workspaces", "실험 작업 공간"], ["SELECT A LAB TO BEGIN", "실험실을 선택해 시작하세요"], ["13개 기본 시나리오로 단일 요청의 정책 판정과 실행 Trace를 확인합니다.", "Inspect policy decisions and execution traces for individual requests across 13 preset scenarios."], ["정책 변경, 승인, 취소, 시간 경과를 여러 단계로 연결합니다.", "Chain policy changes, approvals, revocations, and time progression into multi-step experiments."], ["여러 Agent의 요청과 충돌, 권한 경계를 교차 실험합니다.", "Test requests, conflicts, and authority boundaries across multiple Agents."], ["Agent별 허용 범위와 시스템 실행 게이트를 조정합니다.", "Configure each Agent’s scope and the system execution gate."], ["Recent runs", "최근 실행"], ["View all", "모두 보기"], ["LAB 01 / REQUEST VALIDATION", "실험실 01 / 요청 검증"], ["Agent의 요청을 선택하고 Custos가 어떤 근거로 허용·차단·승인 대기 처리하는지 확인합니다.", "Select an Agent request and inspect why Custos allows, blocks, or holds it for approval."], ["13 PRESET SCENARIOS", "13개 사전 설정 시나리오"], ["시뮬레이션 경계:", "Simulation boundary:"], ["아래 실행은 등록된 가상 이벤트만 계산합니다. 이메일 발송, 파일 삭제, 외부 API 호출 등 실제 부작용은 발생하지 않습니다.", "The run below evaluates predefined virtual events only. It does not send email, delete files, call external APIs, or cause real-world side effects."], ["Scenario catalog", "시나리오 목록"], ["13 CASES", "13개 사례"], ["Request inspector", "요청 검사기"], ["PROPOSAL INPUT", "요청 입력"], ["REQUEST ID", "요청 ID"], ["AGENT IDENTITY", "Agent 신원"], ["RESOURCE / TARGET", "리소스 / 대상"], ["PARAMETERS (JSON)", "매개변수 (JSON)"], ["요청 파라미터는 표시·판정용이며 외부 도구로 전달되지 않습니다.", "Request parameters are for display and evaluation only. They are not sent to external tools."], ["Evaluate request", "요청 평가"], ["Reset", "초기화"], ["Decision & execution trace", "판정 및 실행 추적"], ["WAITING FOR REQUEST", "요청 대기 중"], ["시나리오를 선택하고 Evaluate request를 눌러 실험을 시작하세요.", "Select a scenario and choose Evaluate request to begin."], ["LAB 02 / SEQUENTIAL EXPERIMENTS", "실험실 02 / 순차 실험"], ["시간에 따른 정책·권한 변화를 단계별로 재현하고, 각 시점의 실행 가능 여부를 검증합니다.", "Reproduce policy and authority changes over time, then verify whether execution is permitted at each step."], ["MAX 20 STEPS", "최대 20단계"], ["Build an experiment", "실험 구성"], ["SEQUENCE BUILDER", "시퀀스 빌더"], ["ADD EVENT", "이벤트 추가"], ["Agent proposes: read_database", "Agent 제안: read_database"], ["Agent proposes: send_email", "Agent 제안: send_email"], ["Human approves pending request", "사람이 대기 중인 요청 승인"], ["Human denies pending request", "사람이 대기 중인 요청 거부"], ["Revoke approval / authority", "승인 / 권한 철회"], ["Change policy: deny read_database", "정책 변경: read_database 거부"], ["Restore policy: allow read_database", "정책 복원: read_database 허용"], ["Pause execution gate", "실행 게이트 일시 중지"], ["Resume execution gate", "실행 게이트 재개"], ["Suspend researcher agent", "researcher Agent 정지"], ["Reinstate researcher agent", "researcher Agent 복구"], ["Issue global stop request", "전역 중지 요청"], ["Add", "추가"], ["실험 이벤트를 추가하세요.", "Add experiment events."], ["Run sequence", "시퀀스 실행"], ["Clear", "비우기"], ["Load revocation test", "권한 철회 테스트 불러오기"], ["Experiment output", "실험 결과"], ["IDLE", "대기"], ["실험 시퀀스를 구성하면 단계별 판정이 이곳에 표시됩니다.", "Configure an experiment sequence to see step-by-step decisions here."], ["LAB 03 / DISTRIBUTED AUTHORITY", "실험실 03 / 분산 권한"], ["여러 Agent의 제안이 교차할 때 권한·실행 게이트·정책이 일관되게 적용되는지 실험합니다.", "Test whether authority, execution gates, and policies remain consistent across interacting Agent proposals."], ["Run multi-agent test", "다중 Agent 테스트 실행"], ["Deterministic request plan", "결정적 요청 계획"], ["DETERMINISTIC EVALUATION", "결정론적 평가"], ["Reset agent states", "Agent 상태 초기화"], ["Load conflict case", "충돌 사례 불러오기"], ["Conflict analysis", "충돌 분석"], ["READY", "준비"], ["실행 버튼을 눌러 Agent 간 권한 충돌을 분석하세요.", "Run the test to analyze authority conflicts between Agents."], ["CONTROL PLANE / POLICY CONFIGURATION", "제어 계층 / 정책 설정"], ["이 브라우저 시뮬레이터가 사용하는 정책과 Agent별 권한 범위를 조정합니다.", "Configure the policies and Agent-specific authority scopes used by this browser simulator."], ["Restore defaults", "기본값 복원"], ["Action policies", "작업 정책"], ["POLICY TABLE", "정책 표"], ["Agent authority profiles", "Agent 권한 프로필"], ["SCOPED IDENTITIES", "범위가 지정된 신원"], ["Global execution gate", "전역 실행 게이트"], ["모든 Agent의 새 실행을 차단", "Block new executions from all Agents"], ["Mandatory human approval", "필수 사람 승인"], ["고위험 행동에 사람 승인 요구", "Require human approval for high-risk actions"], ["Default-deny unknown actions", "알 수 없는 작업 기본 거부"], ["등록되지 않은 Action 거부", "Deny unregistered actions"], ["OBSERVABILITY / AUDIT TRAIL", "관측 가능성 / 감사 기록"], ["이 브라우저에서 실행한 시뮬레이션을 검색하고 상세 판정 Trace를 다시 확인합니다.", "Search simulations run in this browser and inspect their detailed decision traces."], ["Export JSON", "JSON 내보내기"], ["Clear history", "이력 삭제"], ["SEARCH RUN ID / SCENARIO / AGENT", "Run ID / 시나리오 / Agent 검색"], ["Search...", "검색..."], ["DECISION FILTER", "판정 필터"], ["All decisions", "모든 판정"], ["PENDING", "승인 대기"], ["STOPPED", "중지됨"], ["Selected run details", "선택한 실행 상세"], ["NO RUN SELECTED", "선택된 실행 없음"], ["이력에서 View를 누르면 상세 trace가 표시됩니다.", "Choose View in the history list to display the detailed trace."], ["시나리오를 선택하고 Evaluate request를 눌러 실험을 시작하세요.", "Select a scenario and evaluate the request to start."], ["Read-only database query", "읽기 전용 데이터베이스 조회"], ["등록된 읽기 전용 데이터 조회", "Query registered read-only data"], ["Send email (approval required)", "이메일 발송 (승인 필요)"], ["외부 효과가 있는 이메일 작업", "Email action with external side effects"], ["Delete production record", "운영 레코드 삭제"], ["고위험 데이터 삭제 요청", "High-risk data deletion request"], ["Agent policy override attempt", "Agent 정책 재정의 시도"], ["Agent가 통제 정책 변경 시도", "Agent attempts to change control policy"], ["Unknown tool invocation", "알 수 없는 도구 호출"], ["등록되지 않은 Action 호출", "Invocation of an unregistered action"], ["Out-of-scope resource", "허용 범위 밖 리소스"], ["Agent 허용 범위 밖의 리소스 요청", "Resource request outside the Agent’s assigned scope"], ["Suspended agent request", "정지된 Agent 요청"], ["정지된 Agent의 실행 요청", "Execution request from a suspended Agent"], ["Global execution gate paused", "전역 실행 게이트 일시 중지"], ["시스템 일시정지 중 요청", "Request while the system is paused"], ["Duplicate request ID", "중복 요청 ID"], ["이미 사용한 요청 식별자 재사용", "Reuse of a previously used request identifier"], ["Stale approval token", "오래된 승인 토큰"], ["권한 버전이 바뀐 승인 토큰", "Approval token from an outdated authority version"], ["Rate spike / request burst", "요청 급증 / 버스트"], ["짧은 시간 내 요청 과다 발생", "Excessive requests in a short period"], ["Parameter tampering after approval", "승인 후 매개변수 변조"], ["승인된 요청의 파라미터 변경", "Modification of an approved request’s parameters"], ["Long-running operation stop", "장기 실행 작업 중지"], ["실행 중 사람의 중지 명령", "Human stop command during execution"], ["Identity check", "신원 확인"], ["Policy lookup", "정책 조회"], ["Authority scope", "권한 범위"], ["Replay protection", "재전송 방지"], ["Rate control", "요청 빈도 제어"], ["Approval freshness", "승인 유효성"], ["Request binding", "요청 바인딩"], ["Final authorization", "최종 권한 검증"], ["Dispatch simulation", "실행 시뮬레이션"], ["Current identity, scope and policy checks passed.", "현재 신원, 범위 및 정책 검증을 통과했습니다."], ["Virtual action completed. No external side effect was performed.", "가상 작업이 완료되었습니다. 외부 부작용은 발생하지 않았습니다."], ["Global gate is paused. New execution is not admitted.", "전역 게이트가 일시 중지되어 새로운 실행이 허용되지 않습니다."], ["Agent is suspended or unavailable.", "Agent가 정지되었거나 사용할 수 없습니다."], ["Duplicate request ID detected.", "중복 요청 ID가 탐지되었습니다."], ["Request burst exceeded the simulated threshold.", "요청 버스트가 시뮬레이션 임계값을 초과했습니다."], ["Approval version is stale.", "승인 버전이 오래되었습니다."], ["Request parameters do not match the approved payload.", "요청 매개변수가 승인된 페이로드와 일치하지 않습니다."], ["Human decision is required before dispatch.", "실행 전에 사람의 결정이 필요합니다."], ["Parameters must be valid JSON", "매개변수는 올바른 JSON이어야 합니다."], ["승인 후 최종 재검증에서 현재 권한 또는 정책이 일치하지 않아 실행이 차단되었습니다.", "Execution was blocked because current authority or policy did not match during final revalidation after approval."], ["사람의 승인이 필요합니다. 승인 전에는 실행되지 않습니다.", "Human approval is required. Nothing executes before approval."], ["정책과 권한 검증을 통과했습니다. 가상 실행만 완료했습니다.", "Policy and authority checks passed. Only a virtual execution was completed."], ["현재 정책이 이 작업을 명시적으로 거부합니다.", "The current policy explicitly denies this action."], ["정지되었거나 유효하지 않은 Agent입니다.", "The Agent is suspended or invalid."], ["중복 요청 ID가 탐지되었습니다.", "A duplicate request ID was detected."], ["요청 빈도 제한을 초과했습니다.", "The simulated request rate limit was exceeded."], ["승인 시점 이후 권한 버전이 변경되어 승인이 무효입니다.", "The approval is invalid because the authority version changed after approval."], ["승인된 요청과 현재 파라미터가 일치하지 않습니다.", "The current parameters do not match the approved request."], ["No valid pending request or current authorization failed.", "유효한 대기 요청이 없거나 현재 권한 검증에 실패했습니다."], ["Approved; final authorization rechecked.", "승인 완료; 최종 권한을 다시 확인했습니다."], ["Request denied; no dispatch.", "요청이 거부되어 실행되지 않았습니다."], ["Outstanding approval revoked; any later execution must fail.", "대기 중인 승인이 철회되었습니다. 이후 실행은 실패해야 합니다."], ["No approval exists.", "승인이 존재하지 않습니다."], ["Execution gate paused.", "실행 게이트가 일시 중지되었습니다."], ["Execution gate resumed.", "실행 게이트가 재개되었습니다."], ["Global stop acknowledged; queued actions do not execute.", "전역 중지 신호를 확인했습니다. 대기 중인 작업은 실행되지 않습니다."], ["Sequence experiment completed", "시퀀스 실험 완료"], ["Agent states reset", "Agent 상태가 초기화되었습니다."], ["Revocation test loaded", "권한 철회 테스트를 불러왔습니다."], ["Conflict case loaded", "충돌 사례를 불러왔습니다."], ["Global execution paused", "전역 실행이 일시 중지되었습니다."], ["Execution resumed", "실행이 재개되었습니다."], ["Policy defaults restored", "기본 정책을 복원했습니다."], ["Run history cleared", "실행 이력을 삭제했습니다."], ["동일 Agent의 병렬 실행 제한과 분산 트랜잭션 격리는 실제 엔진의 보장과 동일하지 않습니다. 이 뷰는 결정적 권한 판정 모델입니다.", "This deterministic authority model does not provide the same guarantees as the production engine for per-Agent concurrency limits or distributed transaction isolation."], ["아직 실행 이력이 없습니다. 첫 시뮬레이션을 실행하세요.", "No runs yet. Execute your first simulation."], ["검색 조건에 맞는 실행 기록이 없습니다.", "No run history matches your search."], ["이력이 삭제되었습니다.", "History has been deleted."], ["Maximum 20 steps", "최대 20단계까지 추가할 수 있습니다."], ["Add at least one event", "이벤트를 하나 이상 추가하세요."], ["View", "보기"], ["SCENARIO / RUN", "시나리오 / 실행"], ["AGENT", "Agent"], ["ACTION", "작업"], ["DECISION", "판정"], ["RUN ID", "실행 ID"], ["SCENARIO", "시나리오"], ["TIME", "시간"], ["SEQUENCE BUILDER", "시퀀스 빌더"], ["steps evaluated", "단계 평가 완료"], ["Read database", "데이터베이스 읽기"], ["Send email", "이메일 발송"], ["Generate report", "보고서 생성"], ["Delete record", "레코드 삭제"], ["Modify policy", "정책 변경"], ["Execute shell", "셸 명령 실행"], ["REQUIRE APPROVAL", "승인 필요"], ["Suspend", "정지"], ["Reinstate", "복구"], ["Identity enabled", "신원 활성화"], ["Identity suspended", "신원 정지"], ["Researcher requests read access", "Researcher 읽기 권한 요청"], ["Operator requests email dispatch", "Operator 이메일 발송 요청"], ["Analyst requests concurrent read", "Analyst 동시 읽기 요청"], ["Researcher attempts restricted delete", "Researcher 제한된 삭제 시도"], ["Researcher requests market data", "Researcher 시장 데이터 요청"], ["Operator requests email dispatch", "Operator 이메일 발송 요청"], ["Analyst submits concurrent read", "Analyst 동시 읽기 요청"], ["Multi-Agent conflict test", "다중 Agent 충돌 테스트"], ["Sequential experiment", "순차 실험"], ["FINAL REVALIDATION", "최종 재검증"], ["Human approval is required.", "사람의 승인이 필요합니다."], ["Approve & simulate dispatch", "승인 및 가상 실행"], ["Deny request", "요청 거부"], ["Confirm stop", "중지 확인"], ["No request selected", "선택된 요청 없음"], ["English", "English"], ["시뮬레이션 스튜디오", "Simulation Studio"], ["허용", "ALLOW"], ["차단", "BLOCK"], ["승인 대기", "PENDING"], ["승인 대기", "PENDING_APPROVAL"], ["중지됨", "STOPPED"],
+["시뮬레이션 스튜디오", "Simulation Studio"],
+["에이전트", "Agent"], ["신원", "Identity"],
+["REQUEST", "요청"], ["AUTHORITY", "권한"], ["DECISION", "판정"], ["APPROVE", "승인"], ["STOP", "중지"], ["ACTIVE", "활성"], ["SUSPENDED", "정지"],
+["ALLOW", "허용"], ["BLOCK", "차단"], ["DENY", "거부"], ["REQUIRE APPROVAL", "승인 필요"], ["Default deny", "기본 거부"],
+["Research Agent", "리서치 에이전트"], ["Operator Agent", "운영 에이전트"], ["Analyst Agent", "분석 에이전트"],
+["시나리오를 선택하고 ", "Select a scenario and "], ["를 눌러 실험을 시작하세요.", " to begin the experiment."],
+["실험 포인트: 승인 이후 권한이 회수되거나 시스템이 일시정지되면, 이전 승인만으로 실행이 계속되어서는 안 됩니다. 각 단계에서 현재 권한을 다시 확인합니다.", "Experiment note: If authority is revoked or the system is paused after approval, the prior approval alone must not allow execution to continue. Current authority is rechecked at every step."],
+["단계 평가 완료", "steps evaluated"], ["단계 실험이 완료되었습니다. 최종 상태: ", " steps completed. Final status: "],
+["가상 실행이 완료되었습니다.", "Virtual execution completed."], ["가상 실행이 중단되었습니다.", "Virtual execution was stopped."],
+["시스템 실행 게이트가 일시정지되어 요청을 받지 않았습니다.", "The system execution gate is paused; the request was not admitted."],
+["Agent에 ", "The Agent is not granted "], [" 권한이 부여되지 않았습니다.", " authority."],
+["Read proposal", "읽기 요청"], ["Email proposal", "이메일 요청"], ["Human approval", "사람 승인"], ["Human denial", "사람의 거부"], ["Stop checkpoint", "중지 체크포인트"],
+["Step ", "단계 "], ["Final revalidation", "최종 재검증"], ["Stop signal", "중지 신호"], ["Human decision", "사람의 결정"],
+["Approve & simulate dispatch", "승인 및 가상 실행"], ["Deny request", "요청 거부"],
+["시나리오 / 실행", "Scenario / Run"], ["실행 ID", "Run ID"], ["최근 실행", "Recent runs"],
+["모든 판정", "All decisions"], ["승인 대기", "PENDING APPROVAL"], ["선택한 실행 상세", "Selected run details"],
+["시스템 일시정지 중", "while the system is paused"], ["실행 버튼을 눌러", "Run the test to "],
+["영어", "English"], ["한국어", "한국어"],
+["승인 이후 권한이 회수되거나 시스템이 일시정지되면, 이전 승인만으로 실행이 계속되어서는 안 됩니다. 각 단계에서 현재 권한을 다시 확인합니다.", "If authority is revoked or the system is paused after approval, the prior approval alone must not allow execution to continue. Current authority is rechecked at every step."],
+["실험 포인트:", "Experiment note:"],
+["AI의 실행 능력과 실행 권한을 분리하고, 모든 요청을 정책과 사람의 통제 아래에서 실험합니다.", "Separate AI capabilities from execution authority, and test every request under policy and human control."],
+["에이전트의 요청을 선택하고 Custos가 어떤 근거로 허용·차단·승인 대기 처리하는지 확인합니다.", "Select an Agent request and inspect why Custos allows, blocks, or holds it for approval."],
+["시뮬레이션 경계:", "Simulation boundary:"],
+["아래 실행은 등록된 가상 이벤트만 계산합니다. 이메일 발송, 파일 삭제, 외부 API 호출 등 실제 부작용은 발생하지 않습니다.", "This run evaluates predefined virtual events only. It does not send email, delete files, call external APIs, or cause real-world side effects."],
+["정책 변경은 이 브라우저 시뮬레이터에만 적용됩니다.", "Policy changes apply only to this browser simulator."],
+["등록된 정책에서 명시적으로 허용하지 않은 행동은 거부합니다.", "Actions not explicitly allowed by a registered policy are denied."],
+["실험 포인트", "Experiment note"],
+["요청 파라미터는 표시·판정용이며 외부 도구로 전달되지 않습니다.", "Request parameters are for display and evaluation only; they are not sent to external tools."],
+["실행 시점마다 현재 권한을 다시 확인합니다.", "Current authority is rechecked at every execution step."],
+["전역 게이트가 일시 중지되어 새로운 실행이 허용되지 않습니다.", "The global gate is paused; new executions are not admitted."],
+["최종 상태: ", "Final status: "],
+["실험이 완료되었습니다.", "The experiment is complete."],
+[" 단계 실험이 완료되었습니다.", " steps completed."],
+["요청 평가", "Evaluate request"],
+["기본 거부:", "Default deny:"],
+["허용 · 차단 · 승인 · 중지", "ALLOW · BLOCK · APPROVE · STOP"],
+["REQUEST → AUTHORITY → DECISION", "요청 → 권한 → 판정"],
+["ACTION", "작업"], ["RESOURCE", "리소스"], ["PARAMETERS", "매개변수"], ["IDENTITY", "신원"], ["SCOPE", "범위"], ["RISK", "위험"], ["APPROVAL", "승인"],
+["SIMULATED STATE", "시뮬레이션 상태"], ["INTERLEAVED REQUESTS", "교차 요청"], ["SCOPED IDENTITIES", "범위가 지정된 신원"],
+["Default deny", "기본 거부"], ["DENY", "거부"], ["REQUIRE APPROVAL", "승인 필요"], ["ACTIVE", "활성"], ["SUSPENDED", "정지"],
+["Identity enabled", "신원 활성화"], ["Identity suspended", "신원 정지"],
+["Research Agent", "리서치 에이전트"], ["Operator Agent", "운영 에이전트"], ["Analyst Agent", "분석 에이전트"],
+["T+", "T+"], ["Request ID", "요청 ID"], ["Run ID", "실행 ID"],
+["Human decision is required before dispatch.", "실행 전에 사람의 결정이 필요합니다."],
+["Approval decision recorded", "승인 결정이 기록되었습니다."], ["Request denied", "요청이 거부되었습니다."],
+["Policy defaults restored", "기본 정책을 복원했습니다."], ["Agent states reset", "Agent 상태를 초기화했습니다."],
+["실행 시퀀스를 구성하세요.", "Configure an execution sequence."],
+["요청 ID가 중복되었습니다.", "The request ID is duplicated."],
+["이 작업은 가상 환경에서만 처리됩니다.", "This action is handled only in the virtual environment."],
+["13개 기본 시나리오로 단일 요청의 정책 판정과 실행 Trace를 확인합니다.", "Inspect policy decisions and execution traces for individual requests across 13 preset scenarios."],
+["실행 Trace", "execution trace"], ["상세 판정 Trace", "detailed decision trace"], ["상세 trace", "detailed trace"],
+["등록되지 않은 Action 기본 거부", "Deny unregistered actions by default"], ["등록되지 않은 Action 호출", "Invocation of an unregistered action"], ["등록되지 않은 Action 거부", "Deny unregistered actions"],
+["등록되지 않은 작업 기본 거부", "Deny unregistered actions by default"], ["등록되지 않은 작업 호출", "Invocation of an unregistered action"], ["등록되지 않은 작업 거부", "Deny unregistered actions"],
+["이 브라우저에서 실행한 시뮬레이션을 검색하고 상세 판정 추적을 다시 확인합니다.", "Search simulations run in this browser and inspect their detailed decision traces."],
+["시나리오를 선택하고 요청 평가를 눌러 실험을 시작하세요.", "Select a scenario and choose Evaluate request to begin."],
+["연구원 읽기 권한 요청", "Researcher requests read access"], ["운영자 이메일 발송 요청", "Operator requests email dispatch"], ["분석가 동시 읽기 요청", "Analyst submits concurrent read"],
+["시스템 일시정지 중 요청", "Request while the system is paused"],
+["에이전트에게 ", "The Agent is not granted "], [" 권한이 부여되지 않았습니다.", " authority."],
+["사람이 요청을 거부했습니다. 실행되지 않았습니다.", "The request was denied by a human and was not executed."],
+["사람의 승인을 받은 뒤 최종 권한 재검증을 통과했습니다. 외부 효과 없이 가상 실행을 완료했습니다.", "Human approval was granted and final authority revalidation passed. The virtual action completed without external side effects."], ["이 뷰는 동기식·순차 평가입니다. 실제 병렬 실행, 경쟁 상태, 동시 승인, 분산 트랜잭션을 시험하지 않습니다. 결과는 결정적 권한 판정 모델입니다.", "This view evaluates requests synchronously and sequentially. It does not test parallel execution, race conditions, concurrent approvals, or distributed transactions. Results are a deterministic authorization model."]];
+let language = 'ko';
+try { language = localStorage.getItem('custosInstantLanguage') === 'en' ? 'en' : 'ko'; } catch(e) {}
+function activeTranslations() {
+  const map = new Map();
+  const hasKorean = value => /[가-힣]/.test(value);
+  for (const pair of translationPairs) {
+    const a=String(pair[0]??''), b=String(pair[1]??'');
+    if (a===b) continue;
+    let ko, en;
+    if (hasKorean(a) && !hasKorean(b)) { ko=a; en=b; }
+    else if (!hasKorean(a) && hasKorean(b)) { ko=b; en=a; }
+    else continue;
+    map.set(language === 'en' ? ko : en, language === 'en' ? en : ko);
+  }
+  return [...map.entries()].sort((a,b)=>b[0].length-a[0].length);
+}
+function translateValue(value, pairs=activeTranslations()) {
+  let out = String(value ?? '');
+  for (const [from,to] of pairs) if (from && out.includes(from)) out = out.split(from).join(to);
+  return out;
+}
+const originalTextNodes = new WeakMap();
+const originalAttributes = new WeakMap();
+function translateDom(root=document.body) {
+  const pairs=activeTranslations();
+  const translateTextNode=node=>{
+    const el=node.parentElement;
+    if (!el || el.closest('#languageSwitch,script,style,noscript')) return;
+    if(!originalTextNodes.has(node)) originalTextNodes.set(node,node.nodeValue);
+    const next=translateValue(originalTextNodes.get(node),pairs);
+    if(next!==node.nodeValue) node.nodeValue=next;
+  };
+  if(root.nodeType===Node.TEXT_NODE) { translateTextNode(root); return; }
+  const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{
+    acceptNode(node) {
+      const el=node.parentElement;
+      if (!el || el.closest('#languageSwitch,script,style,noscript')) return NodeFilter.FILTER_REJECT;
+      return node.nodeValue.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+    }
+  });
+  const nodes=[]; while(walker.nextNode()) nodes.push(walker.currentNode);
+  for(const node of nodes) translateTextNode(node);
+  const translateAttributes=el=>{
+    if(!originalAttributes.has(el)) originalAttributes.set(el,{});
+    const saved=originalAttributes.get(el);
+    for(const attr of ['placeholder','title','aria-label']) if(el.hasAttribute(attr)) {
+      if(!(attr in saved)) saved[attr]=el.getAttribute(attr);
+      const next=translateValue(saved[attr],pairs);
+      if(next!==el.getAttribute(attr))el.setAttribute(attr,next);
+    }
+  };
+  if(root.nodeType===Node.ELEMENT_NODE) translateAttributes(root);
+  root.querySelectorAll?.('[placeholder],[title],[aria-label]').forEach(translateAttributes);
+}
+function applyLanguage(next) {
+  language = next === 'en' ? 'en' : 'ko';
+  document.documentElement.lang=language;
+  try { localStorage.setItem('custosInstantLanguage',language); } catch(e) {}
+  $$('#languageSwitch [data-lang]').forEach(btn=>{btn.classList.toggle('active',btn.dataset.lang===language);btn.setAttribute('aria-pressed',btn.dataset.lang===language?'true':'false');});
+  translateDom();
+  if($('#historyTable')) renderHistory();
+  $$('[data-timestamp]').forEach(el=>{el.textContent=displayTime(el.dataset.timestamp);});
+  translateDom();
+}
+$$('#languageSwitch [data-lang]').forEach(btn=>btn.addEventListener('click',()=>applyLanguage(btn.dataset.lang)));
+const languageObserver = new MutationObserver(records=>{
+  const added=[];
+  for(const record of records) if(record.type==='childList') for(const node of record.addedNodes) added.push(node);
+  for(const node of added) if(node.nodeType===Node.ELEMENT_NODE||node.nodeType===Node.TEXT_NODE) translateDom(node);
+});
+languageObserver.observe(document.body,{subtree:true,childList:true});
+
+// initial render
+renderScenarioList();selectScenario('read');renderSteps();renderAgents();renderPolicies();renderStats();renderRecent();renderHistory();
+applyLanguage(language);
+})();
+</script>
+</body>
+</html><script>
 (()=>{
 'use strict';
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
