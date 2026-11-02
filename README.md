@@ -21,6 +21,7 @@ The public site includes dedicated pages:
 | About | Project mission and current status |
 | Contact | GitHub-based technical feedback and collaboration |
 | Privacy | Data handling for the static site and browser tools |
+| Terms of Use | Usage boundaries for the research website and prototype tools |
 | Simulation Lab | Preserved bilingual browser simulation |
 | Local Control Room | Browser console for a locally running Python API |
 
