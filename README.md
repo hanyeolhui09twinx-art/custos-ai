@@ -100,7 +100,7 @@ All routes except `GET /health` require a Bearer token.
 
 Clients should send a stable `request_id` and reuse it when retrying the same logical operation. An exact retry returns the cached result and does not dispatch a second time. Reusing the same ID with a different payload returns a conflict. Receipts left in `processing` after a process crash are not automatically reclaimed in this version and require operator investigation.
 
-## Automated checks and deployment
+## Feedback and collaboration\n\nGitHub Issues includes structured templates for reproducible bug reports and research/collaboration proposals. Public issues should never include secrets, customer data, or confidential details.\n\n## Automated checks and deployment
 
 GitHub Actions runs:
 - Python compilation and unit/API tests.
