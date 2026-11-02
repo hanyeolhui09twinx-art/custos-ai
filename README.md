@@ -105,7 +105,8 @@ Clients should send a stable `request_id` and reuse it when retrying the same lo
 GitHub Actions runs:
 - Python compilation and unit/API tests.
 - JavaScript syntax and browser-console security-wiring checks.
-- Corporate website page, local-link, shared-asset, bilingual-control, and threat-model content checks.
+- Corporate website route, canonical URL, sitemap, local-link, bilingual navigation, accessibility, contrast, issue-template, and threat-model checks.
+- Deterministic Node-based UI behavior checks for policy decisions, approval/denial, language switching, and keyboard navigation.
 - GitHub Pages deployment when files under `simulation-studio/` change.
 
 ## Security and implementation limits
