@@ -34,10 +34,10 @@ The site is built as static HTML, CSS, and JavaScript and deployed through GitHu
 ### 1. Python policy gateway and local API
 
 - `custos_gateway.py` — deny-by-default policy evaluation, strict request validation, SQLite-backed approval state, request idempotency, 15-second request-bound HMAC dispatch permits, adapter-boundary policy re-checks, approval-claim verification, and optional signed dispatch to a separate provider process.
-- `custos_provider.py` — loopback-only mock tool-provider service. It independently verifies gateway permits and records consumed nonces in SQLite before dispatching to the exact mock Action/Resource registry.
+- `custos_provider.py` — loopback-only mock tool-provider service. It independently verifies gateway permits, persists consumed nonces, and maintains a SQLite execution-receipt ledger keyed by Agent and request ID.
 - `custos_api.py` — authenticated local HTTP API. It binds to loopback and allows browser CORS only from the official Custos GitHub Pages origin.
 - `audit_log.py` — local JSONL events linked by a SHA-256 hash chain.
-- `tests/test_custos.py` and `tests/test_provider_process.py` — gateway/API controls plus separate-process provider integration tests for normal and human-approved dispatch, missing/forged permits, request substitution, concurrent replay, restart-persistent replay rejection, and provider outage.
+- `tests/test_custos.py` and `tests/test_provider_process.py` — gateway/API controls plus separate-process tests for normal and human-approved dispatch, signed permits, replay, request idempotency, crash recovery, lost-response reconciliation, and fail-closed behavior.
 
 Demonstration policy:
 
@@ -47,7 +47,7 @@ Demonstration policy:
 | `research_agent` | `send_email` | `company_email` | HUMAN_APPROVAL, then mock execution |
 | Any configured agent | `disable_custos`, `modify_custos_policy`, `delete_audit_log` | Any | BLOCK |
 
-Unknown agents, unlisted actions, and out-of-scope resources are denied by default. The gateway can dispatch to a separate loopback mock-provider process, which independently verifies the signed request-bound permit and persists consumed nonces in SQLite. Its only tool implementation is still the mock adapter: it does not access a real database, send email, or call external tools. The provider is a same-host research harness, not an OS sandbox or production isolation boundary.
+Unknown agents, unlisted actions, and out-of-scope resources are denied by default. The separate loopback provider independently verifies signed permits and persists both consumed nonces and execution receipts. A completed receipt returns the stored result for the same Agent/request ID and digest; a different digest conflicts. An interrupted executing receipt becomes indeterminate at provider startup and is never replayed automatically. The provider still runs only a mock adapter and has no real tool credentials. This is a same-host research harness, not an OS sandbox or production isolation boundary.
 
 ### 2. Browser Simulation Lab
 
@@ -128,7 +128,9 @@ All routes except `GET /health` require a Bearer token.
 
 ### Request retries
 
-Clients should send a stable `request_id` and reuse it when retrying the same logical operation. An exact retry returns the cached result and does not dispatch a second time. Reusing the same ID with a different payload returns a conflict. Receipts left in `processing` after a process crash are not automatically reclaimed in this version and require operator investigation.
+Clients must send a stable `request_id` and reuse it for every retry of the same logical operation. The provider ledger is keyed by Agent ID and request ID, and also checks the exact request digest. A completed receipt returns the stored result without invoking the mock tool again; reusing the same ID with a changed payload returns a conflict. If the provider restarts with a receipt in `executing`, it changes that receipt to `indeterminate` rather than replaying it.
+
+When the gateway submits a request but does not receive a definite provider response, it returns `decision: "EXECUTION_UNKNOWN"` and `executed: null`. Submit the **same** request ID again to reconcile against the provider receipt. A confirmed completed receipt resolves to the stored result; an `executing` or `indeterminate` receipt remains unresolved. A missing receipt is not treated as proof that the request was never accepted, so Custos does not automatically dispatch again. Do not generate a new request ID to retry an uncertain operation.
 
 ## Contributing\n\nSee [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, engineering expectations, required tests, and security rules. Pull requests use a structured checklist in `.github/PULL_REQUEST_TEMPLATE.md`.\n\n## Feedback and collaboration\n\nGitHub Issues includes structured templates for reproducible bug reports and research/collaboration proposals. Public issues should never include secrets, customer data, or confidential details.\n\n## Automated checks and deployment
 
@@ -147,7 +149,7 @@ This is **not a production security product**:
 - It binds to loopback only. Do not expose it to a network or connect it to valuable tools.
 - Agent identity is mapped from a configured static token. There is no asymmetric identity, signed request envelope, delegated credential chain, or hardware-backed key protection.
 - Approval state is stored in local SQLite. There is no distributed transaction with a downstream tool.
-- The separate mock provider verifies dispatch permits in another local process, but it is not an OS sandbox and has no real tool credentials. A production provider needs an independently isolated runtime, scoped credentials, authenticated transport, and enforcement at the actual tool boundary.
+- The separate mock provider verifies dispatch permits and stores execution receipts in another local process, but it is not an OS sandbox and has no real tool credentials. The ledger provides provider-local at-most-once invocation behavior; a crash after a real downstream side effect but before receipt completion still requires that downstream tool's own idempotency key or status-query reconciliation.
 - Raw credential field names are rejected, but this is not general-purpose secret detection. Never place secrets in free-text values.
 - The audit log is hash-chained but not immutable against a privileged actor who can rewrite the entire file.
 - The Local Control Room uses development tokens. The public page code is part of the credential trust boundary; do not enter production secrets.
@@ -171,3 +173,4 @@ Custos should currently be described as a local research prototype with a mock e
 - [Day 007 — Simulation Lab reliability](devlog/day-007.md)
 - [Day 008 — Guarded execution boundary](devlog/day-008.md)
 - [Day 009 — Separate mock tool-provider process](devlog/day-009.md)
+- [Day 010 — Durable execution receipts and recovery](devlog/day-010.md)
