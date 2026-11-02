@@ -41,8 +41,10 @@
 #demoReview button{min-width:108px}
 .case-btn[aria-pressed="true"]{border-color:#e77b53;background:#1b3542}
 
-/* Contrast refinement: small text and controls use the darker brand accent. */
-.btn,.header-cta,.run-case{background:var(--accent-dark);border-color:var(--accent-dark);color:#fff}
-.btn:hover,.header-cta:hover{background:#963b25;border-color:#963b25}
+/* Contrast refinement: preserve secondary/dark variants while improving primary controls. */
+.btn:not(.btn-secondary):not(.btn-dark),.header-cta,.run-case{background:var(--accent-dark);border-color:var(--accent-dark);color:#fff}
+.btn:not(.btn-secondary):not(.btn-dark):hover,.header-cta:hover{background:#963b25;border-color:#963b25}
 .cta{background:var(--accent-dark)}
+.cta .btn{background:var(--navy);border-color:var(--navy)}
+.cta .btn:hover{background:#284b5b;border-color:#284b5b}
 .section-head h2 em,.intro-band h2 em,.cap-num,.resource-card .kind,.resource-card .go{color:var(--accent-dark)}
