@@ -54,6 +54,33 @@ def canonical_json(value: Any) -> str:
     )
 
 
+def reject_raw_secrets(value: Any, path: str = "parameters") -> None:
+    """Reject common raw credential fields before they reach approvals or audit logs."""
+    sensitive_parts = (
+        "password",
+        "passwd",
+        "secret",
+        "apikey",
+        "authorization",
+        "accesstoken",
+        "refreshtoken",
+        "privatekey",
+        "bearertoken",
+        "credential",
+    )
+    if isinstance(value, dict):
+        for key, child in value.items():
+            normalized = re.sub(r"[^a-z0-9]", "", str(key).casefold())
+            if normalized == "token" or any(part in normalized for part in sensitive_parts):
+                raise ValueError(
+                    f"Raw credential field rejected at {path}.{key}; use a managed credential reference."
+                )
+            reject_raw_secrets(child, f"{path}.{key}")
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            reject_raw_secrets(child, f"{path}[{index}]")
+
+
 @dataclass(frozen=True)
 class ActionRequest:
     agent_id: str
@@ -96,6 +123,7 @@ class ActionRequest:
 
         if len(encoded) > MAX_PARAMETERS_BYTES:
             raise ValueError(f"parameters exceed the {MAX_PARAMETERS_BYTES}-byte limit.")
+        reject_raw_secrets(copied_parameters)
 
         return cls(
             agent_id=agent_id,
