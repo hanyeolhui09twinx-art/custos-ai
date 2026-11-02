@@ -400,7 +400,7 @@
             "ReviewerBearer": []
           }
         ],
-        "description": "Returns a sanitized view of the gateway and provider key-ring snapshots plus verified key lifecycle events. It never returns key bytes, key fingerprints, or unrelated audit payloads. State reflects configuration observed at process startup. This endpoint is read-only.",
+        "description": "Returns a sanitized view of the gateway and provider key-ring snapshots plus verified key lifecycle events. It never returns raw key material or fingerprints, nor unrelated audit payloads. State reflects configuration observed at process startup. This endpoint is read-only.",
         "parameters": [
           {
             "name": "component",
