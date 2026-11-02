@@ -128,9 +128,27 @@ for (const lens of ["/ASSUMPTIONS", "/BLINDSPOT", "/COUNTER", "/EDGECASE", "/SEL
   if (!security.includes(lens)) throw new Error("Security page is missing threat-model section " + lens);
 }
 const home = fs.readFileSync(path.join(site, "index.html"), "utf8");
-if (!home.includes('role="status" aria-live="polite"')) throw new Error("Policy demo decision must be announced to assistive technology.");
-if (!home.includes('data-demo-case="read" aria-pressed="true"')) throw new Error("Policy demo needs an accessible selected scenario state.");
-if (!home.includes('data-demo-approve class="run-case" data-ko="승인 · 모의 실행"')) throw new Error("Approval demo action must be bilingual.");
+for (const phrase of ["CURRENT BUILD / 03 NOV 2026", "IMPLEMENTED LOCALLY", "SIMULATED", "NOT YET INTEGRATED", "MockExecutionAdapter", "real agent framework"]) {
+  if (!home.toLowerCase().includes(phrase.toLowerCase())) throw new Error("Homepage prototype-status panel is missing: " + phrase);
+}
+const platform = fs.readFileSync(path.join(site, "platform.html"), "utf8");
+for (const phrase of ["ALLOW", "HUMAN_APPROVAL", "BLOCK", "research_agent", "read_database", "company_email"]) {
+  if (!platform.includes(phrase)) throw new Error("Platform decision guide is missing: " + phrase);
+}
+for (const outcome of ['data-en="Allow"', 'data-en="Human approval required"', 'data-en="Block"']) {
+  if (!platform.includes(outcome)) throw new Error("Platform outcome card is missing bilingual copy: " + outcome);
+}
+if (!platform.includes('class="decision-cards"') || !platform.includes("CONTROL PLANE / RESEARCH PROTOTYPE")) {
+  throw new Error("Platform page must show its prototype status and decision-card UI.");
+}
+const developerDocs = fs.readFileSync(path.join(site, "developers.html"), "utf8");
+for (const phrase of ['action = "send_email"', 'request_id = "docs-email-001"', '$emailResponse.approval_id', 'decision -ne "HUMAN_APPROVAL"', 'Bearer $reviewerToken', 'Bearer $agentToken', '-Body "{}"']) {
+  if (!developerDocs.includes(phrase)) throw new Error("Developer walkthrough is incomplete: " + phrase);
+}
+if (!developerDocs.includes('class="walkthrough-steps"') || !css.includes(".prototype-grid") || !css.includes(".decision-cards")) {
+  throw new Error("The product explanation UI styles are missing.");
+}
+
 for (const page of ["platform.html", "technology.html", "security.html", "research.html", "company.html", "contact.html", "privacy.html", "terms.html", "updates.html", "developers.html", "lab.html", "local-console.html"]) {
   if (!home.includes("./" + page)) throw new Error("Homepage is missing navigation to " + page);
 }
