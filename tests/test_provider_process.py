@@ -224,6 +224,46 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         self.assertTrue(second["reconciled"])
         self.assertEqual(gateway.store.get(approval_id)["status"], "executed")
 
+    def test_gateway_uses_configured_active_key_id_and_key_ring(self) -> None:
+        request = self._request("gateway-active-key-ring-001")
+        gateway = CustosGateway(
+            store=ApprovalStore(self.root / "gateway-keyring-approvals.sqlite3"),
+            audit_log=AuditLog(str(self.root / "gateway-keyring-audit.jsonl")),
+            adapter=HttpToolProviderAdapter(
+                self.endpoint,
+                receipt_signing_keys=KEY_RING,
+                receipt_signing_key_id="v2",
+            ),
+            dispatch_signing_keys={**KEY_RING, "v2": bytes.fromhex("ef" * 32)},
+            active_dispatch_key_id="v2",
+        )
+        permit = gateway._dispatch_authority.issue(request, mode="ALLOW")
+        self.assertEqual(permit.key_id, "v2")
+        result = gateway.submit(request)
+        self.assertEqual(result["decision"], "ALLOW")
+        self.assertTrue(result["executed"])
+
+    def test_provider_accepts_previous_receipt_lookup_key_during_rotation(self) -> None:
+        request = self._request("provider-receipt-key-rotation-001")
+        status, _ = self._post({
+            "request": request.to_dict(),
+            "permit": self._permit(request).__dict__,
+        })
+        self.assertEqual(status, 200)
+        path = f"/v1/receipts/{request.agent_id}/{request.request_id}"
+        url = f"http://127.0.0.1:{self.port}{path}"
+        req = Request(
+            url,
+            method="GET",
+            headers={
+                RECEIPT_KEY_ID_HEADER: "legacy",
+                RECEIPT_SIGNATURE_HEADER: receipt_lookup_signature(LEGACY_KEY, path, "legacy"),
+            },
+        )
+        with urlopen(req, timeout=3) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        self.assertEqual(payload["receipt"]["request_digest"], request.digest)
+
     def test_provider_accepts_previous_and_active_keys_during_rotation(self) -> None:
         previous_request = self._request("provider-key-rotation-previous-001")
         active_request = self._request("provider-key-rotation-active-001")
@@ -289,7 +329,10 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         forged = Request(
             url,
             method="GET",
-            headers={RECEIPT_SIGNATURE_HEADER: "0" * 64},
+            headers={
+                RECEIPT_KEY_ID_HEADER: ACTIVE_KEY_ID,
+                RECEIPT_SIGNATURE_HEADER: "0" * 64,
+            },
         )
         with self.assertRaises(HTTPError) as invalid:
             urlopen(forged, timeout=3)
