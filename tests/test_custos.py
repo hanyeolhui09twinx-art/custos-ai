@@ -189,6 +189,13 @@ class GatewayTestCase(unittest.TestCase):
         self.assertTrue(self.store.verify_execution_claim(approval_id, claimed))
 
 
+    def test_mock_tool_adapter_requires_exact_registered_action_resource_pair(self) -> None:
+        with self.assertRaises(ValueError):
+            self.adapter.execute(self.request("read_database", "payroll_db"))
+        with self.assertRaises(ValueError):
+            self.adapter.execute(self.request("execute_shell", "host_shell"))
+        self.assertEqual(self.adapter.executed, [])
+
     def test_unknown_action_and_resource_fail_closed(self) -> None:
         result = self.gateway.submit(self.request("delete_database", "research_db"))
         self.assertEqual(result["decision"], Decision.BLOCK.value)
