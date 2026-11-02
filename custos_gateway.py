@@ -495,7 +495,31 @@ class CustosGateway:
         }
 
     def review_approval(self, approval_id: str, reviewer_id: str, approve: bool) -> dict[str, Any]:
+        original = self.store.get(approval_id)
+        if original is None:
+            raise ApprovalNotFound("Approval request was not found.")
         reviewed = self.store.review(approval_id, reviewer_id, approve, self.clock())
+        request_data = original["request"]
+        request = ActionRequest.from_payload(
+            request_data["agent_id"],
+            {
+                "action": request_data["action"],
+                "resource": request_data["resource"],
+                "parameters": request_data["parameters"],
+                "request_id": request_data["request_id"],
+            },
+        )
+        self.store.update_request_result(
+            request,
+            {
+                "decision": Decision.HUMAN_APPROVAL.value,
+                "reason": "Human reviewer approved the request." if approve else "Human reviewer denied the request.",
+                "executed": False,
+                "approval_id": approval_id,
+                "status": reviewed["status"],
+                "reviewer_id": reviewer_id,
+            },
+        )
         self.audit_log.record(
             "APPROVAL_REVIEWED",
             {
