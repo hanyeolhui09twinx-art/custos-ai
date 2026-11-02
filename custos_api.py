@@ -66,10 +66,26 @@ def create_server(
     if not isinstance(reviewer_token, str) or len(reviewer_token) < 32:
         raise ValueError("Reviewer token must contain at least 32 characters.")
 
-    gateway = gateway or CustosGateway(
-        store=ApprovalStore(db_path),
-        audit_log=AuditLog(str(audit_path)),
-    )
+    if gateway is None:
+        adapter = None
+        dispatch_signing_key = None
+        provider_url = os.environ.get("CUSTOS_TOOL_PROVIDER_URL", "")
+        if provider_url:
+            key_hex = os.environ.get("CUSTOS_DISPATCH_SIGNING_KEY", "")
+            try:
+                dispatch_signing_key = bytes.fromhex(key_hex)
+            except ValueError as exc:
+                raise ValueError("CUSTOS_DISPATCH_SIGNING_KEY must be hexadecimal.") from exc
+            if len(dispatch_signing_key) < 32:
+                raise ValueError("CUSTOS_DISPATCH_SIGNING_KEY must encode at least 32 bytes.")
+            from custos_provider import HttpToolProviderAdapter
+            adapter = HttpToolProviderAdapter(provider_url)
+        gateway = CustosGateway(
+            store=ApprovalStore(db_path),
+            audit_log=AuditLog(str(audit_path)),
+            adapter=adapter,
+            dispatch_signing_key=dispatch_signing_key,
+        )
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "CustosPrototype/0.2"
