@@ -336,7 +336,7 @@ class ProviderToolContract:
                 or len(recipient) > 320
                 or "\r" in recipient
                 or "\n" in recipient
-                or not re.fullmatch(r"[^@\\s]+@[^@\\s]+", recipient)
+                or not re.fullmatch(r"[^@\s]+@[^@\s]+", recipient)
             ):
                 raise ValueError("Email contract recipient must be a bounded address.")
             if not isinstance(subject, str) or not subject.strip() or len(subject) > 200:
@@ -434,7 +434,7 @@ class ProviderToolRegistry:
                 raise ValueError("Every Provider binding must contain a versioned tool contract.")
             if contract.required_mode not in {"ALLOW", "APPROVED"}:
                 raise ValueError("Provider contracts must require ALLOW or APPROVED permits.")
-            if not re.fullmatch(r"\\d+\\.\\d+\\.\\d+", contract.version):
+            if not re.fullmatch(r"\d+\.\d+\.\d+", contract.version):
                 raise ValueError("Provider contract versions must use semantic version notation.")
             self._bindings[binding] = contract
 

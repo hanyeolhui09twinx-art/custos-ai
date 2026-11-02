@@ -19,7 +19,7 @@ from custos_gateway import (
     ActionRequest, ApprovalStore, CustosGateway, DispatchAuthority, DispatchOutcomeUnknown,
 )
 from custos_provider import (
-    HttpToolProviderAdapter, ReadOnlyResearchFixture,
+    HttpToolProviderAdapter, ProviderToolContract, ProviderToolRegistry, ReadOnlyResearchFixture,
     RECEIPT_KEY_ID_HEADER, RECEIPT_SIGNATURE_HEADER, receipt_lookup_signature,
 )
 
@@ -554,6 +554,41 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         self.assertEqual(legacy_status, 400)
         receipt_status, _ = self._get_receipt(legacy.agent_id, legacy.request_id)
         self.assertEqual(receipt_status, 404)
+
+    def test_provider_contract_validates_email_address_and_semver(self) -> None:
+        for index, recipient in enumerate(("not-an-email", "bad address@example.test", "x@example.test\\nBcc:evil@example.test"), start=1):
+            with self.subTest(recipient=recipient):
+                request = ActionRequest.from_payload(
+                    "research_agent",
+                    {
+                        "action": "send_email",
+                        "resource": "company_email",
+                        "parameters": {
+                            "recipient": recipient,
+                            "subject": "Contract validation",
+                            "body": "Must be rejected before a receipt is claimed.",
+                        },
+                        "request_id": f"provider-contract-bad-email-{index:03d}",
+                    },
+                )
+                status, _ = self._post({
+                    "request": request.to_dict(),
+                    "permit": self._permit(request, mode="APPROVED").__dict__,
+                })
+                self.assertEqual(status, 400)
+                receipt_status, _ = self._get_receipt(request.agent_id, request.request_id)
+                self.assertEqual(receipt_status, 404)
+
+        with self.assertRaisesRegex(ValueError, "semantic version"):
+            ProviderToolRegistry(bindings={
+                ("research_agent", "read_database", "research_db"): ProviderToolContract(
+                    version="version-one",
+                    required_mode="ALLOW",
+                    input_kind="research_query_v1",
+                    parameter_fields=frozenset({"query"}),
+                    result_status="read_only",
+                )
+            })
 
     def test_provider_rejects_invalid_research_schema_before_claiming_execution(self) -> None:
         request = ActionRequest.from_payload(
