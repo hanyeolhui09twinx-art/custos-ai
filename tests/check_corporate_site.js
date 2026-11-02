@@ -166,7 +166,6 @@ if (!openApi.paths["/v1/approvals/{approval_id}/execute"].post.requestBody.requi
 if (JSON.stringify(openApi.paths["/v1/approvals/{approval_id}/execute"].post.requestBody).indexOf("{}") < 0) {
   throw new Error("OpenAPI execute request must document an empty JSON object.");
 }
-const developerDocs = fs.readFileSync(path.join(site, "developers.html"), "utf8");
 if (!developerDocs.includes('Invoke-RestMethod -Method Post') || !developerDocs.includes('Bearer $reviewerToken') || !developerDocs.includes('PASTE_APPROVAL_ID_HERE')) {
   throw new Error("Developer Docs must contain a working-style local request and approval walkthrough.");
 }
