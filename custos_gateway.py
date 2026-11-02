@@ -382,15 +382,50 @@ class GuardedExecutionAdapter:
         return self._delegate.execute(request)
 
 
+class RegisteredToolAdapter:
+    """Dispatch only to an explicitly registered (action, resource) handler."""
+
+    def __init__(
+        self,
+        handlers: dict[tuple[str, str], Callable[[ActionRequest], dict[str, Any]]],
+    ) -> None:
+        if not handlers:
+            raise ValueError("At least one exact tool binding must be registered.")
+        self._handlers: dict[tuple[str, str], Callable[[ActionRequest], dict[str, Any]]] = {}
+        for binding, handler in handlers.items():
+            if (
+                not isinstance(binding, tuple)
+                or len(binding) != 2
+                or not all(isinstance(part, str) and IDENTIFIER_RE.fullmatch(part) for part in binding)
+            ):
+                raise ValueError("Tool bindings must be exact (action, resource) identifier pairs.")
+            if not callable(handler):
+                raise ValueError("Every registered tool binding must have a callable handler.")
+            if binding in self._handlers:
+                raise ValueError("Duplicate tool binding.")
+            self._handlers[binding] = handler
+
+    def execute(self, request: ActionRequest) -> dict[str, Any]:
+        handler = self._handlers.get((request.action, request.resource))
+        if handler is None:
+            raise ValueError("No tool is registered for this exact action/resource pair.")
+        result = handler(request)
+        if not isinstance(result, dict):
+            raise TypeError("Registered tool handlers must return a JSON object.")
+        return result
+
+
 class MockExecutionAdapter:
-    """Safe demonstration adapter. It records simulated actions and never calls external tools."""
+    """Safe demonstration adapter with an exact action/resource registry and no external effects."""
 
     def __init__(self) -> None:
         self.executed: list[dict[str, Any]] = []
+        self._registry = RegisteredToolAdapter({
+            ("read_database", "research_db"): self._simulate,
+            ("send_email", "company_email"): self._simulate,
+        })
 
-    def execute(self, request: ActionRequest) -> dict[str, Any]:
-        if request.action not in {"read_database", "send_email"}:
-            raise ValueError("Mock adapter does not implement this action.")
+    def _simulate(self, request: ActionRequest) -> dict[str, Any]:
         result = {
             "status": "simulated",
             "agent_id": request.agent_id,
@@ -400,6 +435,9 @@ class MockExecutionAdapter:
         }
         self.executed.append(result)
         return result
+
+    def execute(self, request: ActionRequest) -> dict[str, Any]:
+        return self._registry.execute(request)
 
 
 class ApprovalStore:
