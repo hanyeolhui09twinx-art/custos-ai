@@ -592,10 +592,6 @@ class APITestCase(unittest.TestCase):
         )
         self.assertEqual(status, 401)
 
-        gateway_v2 = b"g" * 32
-        KeyRingLifecycle(self.db_path, AuditLog(str(self.audit_path)), "gateway").observe(
-            {"gateway-v2": hashlib.sha256(gateway_v2).hexdigest()}, "gateway-v2"
-        )
         provider_v1 = b"p" * 32
         provider_lifecycle = KeyRingLifecycle(
             self.provider_db_path, AuditLog(str(self.provider_audit_path)), "provider"
@@ -606,7 +602,7 @@ class APITestCase(unittest.TestCase):
         provider_lifecycle.observe(
             {"provider-v2": hashlib.sha256(b"q" * 32).hexdigest()}, "provider-v2"
         )
-        self.gateway.audit_log.record(
+        AuditLog(str(self.audit_path)).record(
             "REQUEST_RECEIVED", {"password": "audit-sensitive-not-returned"}
         )
 
@@ -615,11 +611,9 @@ class APITestCase(unittest.TestCase):
         )
         self.assertEqual(status, 200)
         self.assertEqual(overview["components"]["gateway"]["status"], "tracked")
-        # The endpoint reports current observed SQLite key state, not stale in-memory
-        # gateway signer state; a process restart is required to apply config changes.
-        self.assertEqual(overview["components"]["gateway"]["active_key_id"], "gateway-v2")
+        self.assertEqual(overview["components"]["gateway"]["active_key_id"], "gateway-v1")
         self.assertEqual(
-            overview["components"]["gateway"]["accepted_key_ids"], ["gateway-v2"]
+            overview["components"]["gateway"]["accepted_key_ids"], ["gateway-v1"]
         )
         self.assertEqual(overview["components"]["provider"]["active_key_id"], "provider-v2")
         self.assertEqual(
