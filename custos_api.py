@@ -79,7 +79,10 @@ def create_server(
             if len(dispatch_signing_key) < 32:
                 raise ValueError("CUSTOS_DISPATCH_SIGNING_KEY must encode at least 32 bytes.")
             from custos_provider import HttpToolProviderAdapter
-            adapter = HttpToolProviderAdapter(provider_url)
+            adapter = HttpToolProviderAdapter(
+                provider_url,
+                receipt_signing_key=dispatch_signing_key,
+            )
         gateway = CustosGateway(
             store=ApprovalStore(db_path),
             audit_log=AuditLog(str(audit_path)),
