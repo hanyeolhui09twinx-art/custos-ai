@@ -131,6 +131,12 @@ const home = fs.readFileSync(path.join(site, "index.html"), "utf8");
 if (!home.includes("TARGET ARCHITECTURE") || !home.includes("the current Python execution adapter is a mock")) {
   throw new Error("Homepage architecture diagram must be labeled as a conceptual target, not live enforcement.");
 }
+if ((home.match(/THE CUSTOS MISSION/g) || []).length !== 1) {
+  throw new Error("Homepage must contain exactly one primary mission section.");
+}
+if ((home.match(/INSTITUTIONAL RELATIONSHIPS/g) || []).length !== 1) {
+  throw new Error("Homepage must contain exactly one institutional partnerships section.");
+}
 if (!home.includes('class="flow-routing"') || !home.includes("CONDITIONAL ROUTING")) {
   throw new Error("Homepage architecture must show conditional policy routing.");
 }
@@ -204,7 +210,7 @@ for (const page of ["platform.html", "technology.html", "security.html", "resear
 }
 
 const updates = fs.readFileSync(path.join(site, "updates.html"), "utf8");
-for (const phrase of ["DAY 001", "DAY 002", "DAY 003", "DAY 004", "DAY 005", "DAY 006", "DAY 007", "DAY 008", "DAY 009", "DAY 010", "DAY 011", "DAY 012", "DAY 013", "DAY 014", "DAY 015", "67 TESTS PASS", "NOT VERIFIED", "mock execution adapter", "real-agent bypass resistance"]) {
+for (const phrase of ["DAY 001", "DAY 002", "DAY 003", "DAY 004", "DAY 005", "DAY 006", "DAY 007", "DAY 008", "DAY 009", "DAY 010", "DAY 011", "DAY 012", "DAY 013", "DAY 014", "DAY 015", "DAY 016", "67 TESTS PASS", "NOT VERIFIED", "mock execution adapter", "real-agent bypass resistance"]) {
   if (!updates.toLowerCase().includes(phrase.toLowerCase())) throw new Error("Updates page is missing factual status item: " + phrase);
 }
 for (const log of ["day-001.md", "day-002.md", "day-003.md", "day-004.md", "day-005.md", "day-006.md", "day-007.md", "day-008.md", "day-009.md", "day-010.md", "day-011.md", "day-012.md", "day-013.md", "day-014.md", "day-015.md"]) {

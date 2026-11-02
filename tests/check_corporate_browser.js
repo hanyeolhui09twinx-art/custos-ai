@@ -23,6 +23,17 @@ const PAGES = [
   "/contact.html"
 ];
 
+async function revealAll(page) {
+  const totalHeight = await page.evaluate(() => document.body.scrollHeight);
+  const viewportHeight = await page.evaluate(() => window.innerHeight);
+  for (let y = 0; y < totalHeight; y += Math.max(320, Math.floor(viewportHeight * 0.75))) {
+    await page.evaluate((scrollY) => window.scrollTo(0, scrollY), y);
+    await page.waitForTimeout(90);
+  }
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForTimeout(120);
+}
+
 function recordError(bucket, pageName) {
   return (message) => bucket.push(pageName + ": " + message);
 }
@@ -65,8 +76,10 @@ async function main() {
       );
 
       if (route === "/") {
+        await revealAll(page);
         await page.screenshot({ path: path.join(OUT, "home-desktop.png"), fullPage: true });
       } else if (route === "/mission.html") {
+        await revealAll(page);
         await page.screenshot({ path: path.join(OUT, "mission-desktop.png"), fullPage: true });
       } else if (route === "/media.html") {
         const preview = page.locator(".film-preview");
@@ -75,6 +88,7 @@ async function main() {
         assert.equal(sceneCount, 6, "Brand motion preview must contain six scenes");
         const animation = await preview.locator(".film-scene.s1").evaluate((el) => getComputedStyle(el).animationName);
         assert.equal(animation, "film1", "Brand preview first scene animation is not running");
+        await revealAll(page);
         await page.screenshot({ path: path.join(OUT, "media-desktop.png"), fullPage: true });
       }
 
@@ -126,6 +140,7 @@ async function main() {
     assert.equal(await toggle.evaluate((el) => document.activeElement === el), true, "Escape must restore focus to the menu toggle");
     const dimensions = await mobile.evaluate(() => ({ viewport: document.documentElement.clientWidth, content: document.documentElement.scrollWidth }));
     assert.ok(dimensions.content <= dimensions.viewport + 1, "Mobile page has horizontal overflow: " + JSON.stringify(dimensions));
+    await revealAll(mobile);
     await mobile.screenshot({ path: path.join(OUT, "mission-mobile.png"), fullPage: true });
     if (mobileErrors.length) failures.push(...mobileErrors);
     await mobileContext.close();
