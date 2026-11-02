@@ -159,7 +159,7 @@ GitHub Actions runs:
 - JavaScript syntax and browser-console security-wiring checks.
 - Corporate website route, canonical URL, sitemap, local-link, bilingual navigation, accessibility, contrast, issue-template, and threat-model checks.
 - Deterministic Node-based UI behavior checks for policy decisions, approval/denial, language switching, and keyboard navigation.
-- Chromium browser checks for desktop/mobile routes, local links, language switching, keyboard navigation, media preview, and reduced-motion behavior.
+- Chromium Playwright checks for all fourteen corporate routes at nine viewport widths (320–1024px), including horizontal-overflow detection, 960px tablet-navigation behavior, mobile keyboard/focus handling, local links, language switching, Media Room preview, and reduced-motion behavior. This is Chromium coverage, not full cross-browser or physical-device certification.
 - GitHub Pages deployment when files under `simulation-studio/` change.
 
 ## Security and implementation limits
@@ -201,3 +201,4 @@ Custos should currently be described as a local research prototype with a mock e
 - [Day 014 — Key compromise response and lifecycle audit](devlog/day-014.md)
 - [Day 015 — Read-only Security Operations](devlog/day-015.md)
 - [Day 016 — Human Agency Preservation corporate platform](devlog/day-016.md)
+- [Day 017 — Responsive corporate site verification](devlog/day-017.md)
