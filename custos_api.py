@@ -86,8 +86,26 @@ def create_server(
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
+            origin = self.headers.get("Origin")
+            if origin == "https://hanyeolhui09twinx-art.github.io":
+                self.send_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Vary", "Origin")
             self.end_headers()
             self.wfile.write(body)
+
+        def do_OPTIONS(self) -> None:
+            origin = self.headers.get("Origin")
+            if origin != "https://hanyeolhui09twinx-art.github.io":
+                self._send(403, {"error": "Browser origin is not allowed."})
+                return
+            self.send_response(204)
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
+            self.send_header("Access-Control-Max-Age", "300")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
 
         def _body(self) -> dict[str, Any]:
             raw_length = self.headers.get("Content-Length")
