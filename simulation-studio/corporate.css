@@ -209,3 +209,15 @@
  .timeline-item{min-width:0;max-width:100%;overflow-wrap:anywhere}
  .timeline-item strong{overflow-wrap:anywhere}
 }
+
+
+/* Responsive developer resource cards: long SDK tool identifiers must not widen grid tracks. */
+.resources-grid>.resource-card{min-width:0}
+.resources-grid>.resource-card h3,
+.resources-grid>.resource-card p{min-width:0;overflow-wrap:anywhere}
+@media(max-width:960px){
+ .resources-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:760px){
+ .resources-grid{grid-template-columns:1fr}
+}
