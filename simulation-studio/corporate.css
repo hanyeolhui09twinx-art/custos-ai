@@ -40,3 +40,9 @@
 #demoReview:not([hidden]){display:flex;flex-wrap:wrap;align-items:center}
 #demoReview button{min-width:108px}
 .case-btn[aria-pressed="true"]{border-color:#e77b53;background:#1b3542}
+
+/* Contrast refinement: small text and controls use the darker brand accent. */
+.btn,.header-cta,.run-case{background:var(--accent-dark);border-color:var(--accent-dark);color:#fff}
+.btn:hover,.header-cta:hover{background:#963b25;border-color:#963b25}
+.cta{background:var(--accent-dark)}
+.section-head h2 em,.intro-band h2 em,.cap-num,.resource-card .kind,.resource-card .go{color:var(--accent-dark)}
