@@ -140,3 +140,4 @@ Custos should currently be described as a local research prototype with a mock e
 - [Day 004 — Public updates journal](devlog/day-004.md)
 - [Day 005 — Product experience and explanation](devlog/day-005.md)
 - [Day 006 — Conditional policy flow](devlog/day-006.md)
+- [Day 007 — Simulation Lab reliability](devlog/day-007.md)
