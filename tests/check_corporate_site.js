@@ -198,8 +198,8 @@ if (!openApi.paths["/v1/approvals/{approval_id}/execute"].post.requestBody.requi
 if (JSON.stringify(openApi.paths["/v1/approvals/{approval_id}/execute"].post.requestBody).indexOf("{}") < 0) {
   throw new Error("OpenAPI execute request must document an empty JSON object.");
 }
-if (!developerDocs.includes('Invoke-RestMethod -Method Post') || !developerDocs.includes('Bearer $reviewerToken') || !developerDocs.includes('PASTE_APPROVAL_ID_HERE')) {
-  throw new Error("Developer Docs must contain a working-style local request and approval walkthrough.");
+if (!developerDocs.includes('Invoke-RestMethod -Method Post') || !developerDocs.includes('Bearer $reviewerToken') || !developerDocs.includes('$emailResponse.approval_id')) {
+  throw new Error("Developer Docs must contain a complete request-to-approval walkthrough.");
 }
 if (!developerDocs.includes('-Body "{}"')) throw new Error("Execute example must send the required JSON request body.");
 for (const code of ["200", "400", "401", "403", "404", "409", "410", "413", "500"]) {
