@@ -162,8 +162,14 @@ if (!bugTemplate.includes("Steps to reproduce") || !bugTemplate.includes("Public
 if (!researchTemplate.includes("Problem or research question") || !researchTemplate.includes("Proposed approach")) {
   throw new Error("Research proposal template must separate the problem from the proposed approach.");
 }
+const securityPolicy = fs.readFileSync(path.join(root, "SECURITY.md"), "utf8");
+if (!securityPolicy.includes("Report a vulnerability") || !securityPolicy.includes("private reporting")) {
+  throw new Error("SECURITY.md must explain private vulnerability reporting availability and limitations.");
+}
+const issueConfig = fs.readFileSync(path.join(issueTemplates, "config.yml"), "utf8");
+if (!issueConfig.includes("SECURITY.md")) throw new Error("Issue intake config must link the security reporting policy.");
 const contact = fs.readFileSync(path.join(site, "contact.html"), "utf8");
-if (!contact.includes("template=bug_report.yml") || !contact.includes("template=research_proposal.yml")) {
+if (!contact.includes("template=bug_report.yml") || !contact.includes("template=research_proposal.yml") || !contact.includes("SECURITY.md")) {
   throw new Error("Contact page must link to the structured issue templates.");
 }
 
