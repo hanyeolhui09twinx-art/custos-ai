@@ -145,10 +145,18 @@ async function api(path,method,body,token){
  const headers={};
  if(body!==undefined) headers["Content-Type"]="application/json";
  if(token) headers["Authorization"]="Bearer "+token;
+ let permissionState="prompt";
+ if(navigator.permissions&&navigator.permissions.query){
+  try{
+   const permission=await navigator.permissions.query({name:"loopback-network"});
+   permissionState=permission.state;
+  }catch(e){permissionState="prompt"}
+ }
+ if(permissionState==="denied") throw new Error("Loopback access is blocked for this site. Open the browser site settings and allow Loopback network access, then retry.");
  let response;
  try{
-  response=await fetch(url,{method:method||"GET",headers:headers,body:body===undefined?undefined:JSON.stringify(body),cache:"no-store"});
- }catch(e){throw new Error("Network/CORS: "+e.message)}
+  response=await fetch(url,{method:method||"GET",mode:"cors",targetAddressSpace:"loopback",headers:headers,body:body===undefined?undefined:JSON.stringify(body),cache:"no-store"});
+ }catch(e){throw new Error("Network/CORS or Loopback permission: "+e.message)}
  let payload={};
  try{payload=await response.json()}catch(e){payload={error:"Non-JSON response"}}
  if(!response.ok) throw new Error(response.status+" "+(payload.error||response.statusText));
