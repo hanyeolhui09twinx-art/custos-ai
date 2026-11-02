@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0a1018">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src http://127.0.0.1:8765 http://localhost:8765; base-uri 'none'; form-action 'none'">
+<title>Custos AI — Local API Console</title>
+<style>
+:root{color-scheme:dark;--bg:#0a1018;--panel:#101a26;--panel2:#142234;--line:#26394c;--text:#e8f0f7;--muted:#91a5b8;--cyan:#59d8df;--green:#60d6a0;--yellow:#edc46e;--red:#ff7e87;--blue:#83adff}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(900px 500px at 75% -10%,#23445b55,transparent 60%),var(--bg);color:var(--text);font:14px/1.5 Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans KR",sans-serif}
+a{color:var(--cyan);text-decoration:none}a:hover{text-decoration:underline}.wrap{max-width:1180px;margin:auto;padding:28px 22px 60px}
+header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:24px}.brand{display:flex;gap:12px;align-items:center}.mark{width:40px;height:40px;display:grid;place-items:center;border-radius:12px;background:linear-gradient(145deg,#4ad3dc,#5d8eff);color:#07131c;font-weight:900;font-size:20px}.brand strong{letter-spacing:.14em}.brand small{display:block;color:var(--muted);font-size:10px;letter-spacing:.16em}
+.headright{display:flex;align-items:center;gap:12px}.badge{padding:6px 10px;border:1px solid var(--line);border-radius:30px;color:var(--muted);font-size:11px}.lang button{padding:6px 9px;border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:8px}.lang button.active{color:var(--cyan);border-color:var(--cyan)}
+h1{font-size:28px;margin:0 0 5px}h2{font-size:16px;margin:0 0 15px}.intro{color:var(--muted);margin:0 0 22px;max-width:760px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.card{background:linear-gradient(180deg,#122031,#0e1824);border:1px solid var(--line);border-radius:16px;padding:19px;min-width:0}.wide{grid-column:1/-1}.row{display:flex;gap:10px;align-items:end}.row>*{flex:1;min-width:0}
+label{display:block;font-size:12px;color:var(--muted);margin:11px 0 5px}input,select,textarea{width:100%;border:1px solid #31475c;border-radius:9px;background:#0a1420;color:var(--text);padding:10px 11px;outline:none}input:focus,select:focus,textarea:focus{border-color:var(--cyan);box-shadow:0 0 0 2px #59d8df22}textarea{min-height:112px;resize:vertical;font:12px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace}
+button{border:1px solid #365168;background:#1a2b3e;color:var(--text);border-radius:9px;padding:9px 12px;font-weight:650;cursor:pointer}button:hover{border-color:var(--cyan)}button.primary{background:linear-gradient(120deg,#2d8f99,#426fc0);border:0;color:white}button.danger{border-color:#8b4851;color:#ff9ca4;background:#351c25}button:disabled{opacity:.45;cursor:not-allowed}
+.note{color:var(--muted);font-size:12px;margin:10px 0 0}.status{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--muted)}.dot{width:8px;height:8px;border-radius:50%;background:#8799aa}.dot.ok{background:var(--green)}.dot.bad{background:var(--red)}
+.toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px;flex-wrap:wrap}.result{padding:12px;background:#08111b;border:1px solid #26394c;border-radius:10px;min-height:80px;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;color:#c9d8e6;margin-top:12px}
+.approval-list{display:grid;gap:8px;margin-top:12px}.approval{border:1px solid var(--line);border-radius:10px;padding:10px;background:#0b1622;cursor:pointer}.approval.selected{border-color:var(--cyan)}.approval strong{display:block;font-size:12px}.approval small{color:var(--muted);overflow-wrap:anywhere}
+.warning{border-left:3px solid var(--yellow);background:#2a2417;padding:10px 12px;border-radius:7px;color:#e9d7ad;font-size:12px;margin-top:12px}.foot{color:#758ba0;font-size:11px;margin-top:20px}
+@media(max-width:780px){.grid{grid-template-columns:1fr}.wide{grid-column:auto}.wrap{padding:20px 13px 40px}header{align-items:flex-start}.headright{flex-wrap:wrap;justify-content:flex-end}.badge{display:none}.row{flex-direction:column;align-items:stretch}.toolbar{align-items:stretch}.toolbar button{flex:1}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="brand"><div class="mark">C</div><div><strong>CUSTOS AI</strong><small>LOCAL API CONSOLE · v0.2</small></div></div>
+  <div class="headright"><span class="badge" id="modeBadge">LOOPBACK ONLY · MOCK EXECUTION</span><div class="lang"><button id="ko" type="button">한국어</button><button id="en" class="active" type="button">English</button></div></div>
+</header>
+<h1 id="title">Local API Console</h1>
+<p class="intro" id="intro">Connect this hosted console to a Custos API running on your own computer. Requests are evaluated by the Python policy gateway. The configured adapter is simulated and does not call external tools.</p>
+<div class="grid">
+  <section class="card wide">
+    <h2 id="connectTitle">1. Local connection and credentials</h2>
+    <div class="row">
+      <div><label id="endpointLabel" for="endpoint">Local API endpoint</label><input id="endpoint" value="http://127.0.0.1:8765" spellcheck="false"></div>
+      <div style="flex:0 0 auto"><button class="primary" id="connectBtn">Test connection</button></div>
+    </div>
+    <div class="row">
+      <div><label id="agentTokenLabel" for="agentToken">Agent Bearer token</label><input id="agentToken" type="password" autocomplete="off" placeholder="Paste local agent token"></div>
+      <div><label id="reviewerTokenLabel" for="reviewerToken">Reviewer Bearer token</label><input id="reviewerToken" type="password" autocomplete="off" placeholder="Paste local reviewer token"></div>
+    </div>
+    <div class="toolbar"><span class="status"><span class="dot" id="healthDot"></span><span id="healthText">Not connected</span></span><button id="clearTokens">Clear tokens</button></div>
+    <div class="warning" id="securityNote">Tokens are held only in this page's memory and are not saved to localStorage. Use this page only from the official Custos GitHub Pages origin. Never share a screenshot containing your credentials.</div>
+  </section>
+
+  <section class="card">
+    <h2 id="requestTitle">2. Submit an agent request</h2>
+    <label id="actionLabel" for="action">Action</label>
+    <select id="action">
+      <option value="read_database">read_database</option>
+      <option value="send_email">send_email (requires approval)</option>
+      <option value="disable_custos">disable_custos (blocked)</option>
+    </select>
+    <label id="resourceLabel" for="resource">Resource</label>
+    <select id="resource">
+      <option value="research_db">research_db</option>
+      <option value="company_email">company_email</option>
+      <option value="custos_core">custos_core</option>
+    </select>
+    <label id="requestIdLabel" for="requestId">Request ID (reuse for safe retries)</label>
+    <div class="row"><input id="requestId" spellcheck="false"><button id="newId" type="button" style="flex:0 0 auto">New ID</button></div>
+    <label id="paramsLabel" for="params">Parameters (JSON object)</label>
+    <textarea id="params" spellcheck="false">{
+  "query": "market_trends"
+}</textarea>
+    <div class="toolbar"><button class="primary" id="submitBtn">Submit request to gateway</button></div>
+    <pre class="result" id="requestResult" aria-live="polite">No request submitted.</pre>
+  </section>
+
+  <section class="card">
+    <h2 id="approvalTitle">3. Human approval queue</h2>
+    <p class="note" id="approvalDesc">Reviewer credentials are required to inspect and decide pending requests.</p>
+    <div class="toolbar"><button id="refreshApprovals">Refresh pending approvals</button><span class="status" id="approvalCount">0 pending</span></div>
+    <div class="approval-list" id="approvalList"><p class="note">No approval data loaded.</p></div>
+    <label id="selectedApprovalLabel" for="selectedApproval">Selected approval ID</label>
+    <input id="selectedApproval" placeholder="Select an approval above or paste its ID" spellcheck="false">
+    <div class="toolbar">
+      <button id="approveBtn">Approve</button>
+      <button class="danger" id="denyBtn">Deny</button>
+      <button class="primary" id="executeBtn">Execute approved request</button>
+    </div>
+    <pre class="result" id="approvalResult" aria-live="polite">No approval action performed.</pre>
+  </section>
+
+  <section class="card wide">
+    <h2 id="howTitle">4. How this works</h2>
+    <p class="note" id="howText">Agent request → Python policy gateway → ALLOW / HUMAN_APPROVAL / BLOCK. Approval-required requests are stored in local SQLite. A reviewer decides, then the original agent may execute the exact approved request once. Every decision is appended to the local hash-chained audit log.</p>
+    <p class="foot" id="footer">This console is a thin client for the local prototype. It does not make the backend production-safe, and it does not connect to a real database, email provider, or agent tool. Stop the API server when you are finished.</p>
+  </section>
+</div>
+<p class="foot"><a href="./index.html" id="backLink">← Back to Simulation Studio</a> · <a href="https://github.com/hanyeolhui09twinx-art/custos-ai" target="_blank" rel="noopener noreferrer">Source repository</a></p>
+</div>
+<script>
+(function(){
+"use strict";
+const $=id=>document.getElementById(id);
+let language="en";
+const text={
+en:{
+title:"Local API Console",
+intro:"Connect this hosted console to a Custos API running on your own computer. Requests are evaluated by the Python policy gateway. The configured adapter is simulated and does not call external tools.",
+connectTitle:"1. Local connection and credentials",endpointLabel:"Local API endpoint",agentTokenLabel:"Agent Bearer token",reviewerTokenLabel:"Reviewer Bearer token",connectBtn:"Test connection",notConnected:"Not connected",clearTokens:"Clear tokens",securityNote:"Tokens are held only in this page's memory and are not saved to localStorage. Use this page only from the official Custos GitHub Pages origin. Never share a screenshot containing your credentials.",
+requestTitle:"2. Submit an agent request",actionLabel:"Action",resourceLabel:"Resource",requestIdLabel:"Request ID (reuse for safe retries)",newId:"New ID",paramsLabel:"Parameters (JSON object)",submitBtn:"Submit request to gateway",noRequest:"No request submitted.",
+approvalTitle:"3. Human approval queue",approvalDesc:"Reviewer credentials are required to inspect and decide pending requests.",refreshApprovals:"Refresh pending approvals",pending:"pending",noApprovalData:"No approval data loaded.",selectedApprovalLabel:"Selected approval ID",approveBtn:"Approve",denyBtn:"Deny",executeBtn:"Execute approved request",noApprovalAction:"No approval action performed.",
+howTitle:"4. How this works",howText:"Agent request → Python policy gateway → ALLOW / HUMAN_APPROVAL / BLOCK. Approval-required requests are stored in local SQLite. A reviewer decides, then the original agent may execute the exact approved request once. Every decision is appended to the local hash-chained audit log.",
+footer:"This console is a thin client for the local prototype. It does not make the backend production-safe, and it does not connect to a real database, email provider, or agent tool. Stop the API server when you are finished.",backLink:"← Back to Simulation Studio",
+connected:"Local API connection successful",healthFailed:"Connection failed",cleared:"Credentials cleared from this page.",missingAgent:"Enter the agent token first.",missingReviewer:"Enter the reviewer token first.",badEndpoint:"Endpoint must use http and point to localhost or 127.0.0.1.",badParams:"Parameters must be a valid JSON object.",requestFailed:"Request failed",approvalsFailed:"Could not load approvals",emptyQueue:"No pending approvals.",approveSuccess:"Approval decision recorded",denySuccess:"Denial recorded",executeSuccess:"Execution completed (mock adapter)",selectApproval:"Select or enter an approval ID.",replayed:"This was an idempotent replay. The gateway did not dispatch a second action.",newRequest:"Request ID generated.",
+sendEmail:"send_email (requires approval)",blocked:"disable_custos (blocked)"
+},
+ko:{
+title:"로컬 API 콘솔",
+intro:"현재 페이지를 사용자 컴퓨터에서 실행 중인 Custos API에 연결합니다. 요청은 Python 정책 게이트웨이가 판정합니다. 현재 실행 어댑터는 모의 실행이며 외부 도구를 호출하지 않습니다.",
+connectTitle:"1. 로컬 연결 및 인증 정보",endpointLabel:"로컬 API 주소",agentTokenLabel:"Agent Bearer 토큰",reviewerTokenLabel:"검토자 Bearer 토큰",connectBtn:"연결 테스트",notConnected:"연결되지 않음",clearTokens:"토큰 지우기",securityNote:"토큰은 이 페이지의 메모리에만 보관하며 localStorage에 저장하지 않습니다. 공식 Custos GitHub Pages 주소에서만 사용하세요. 인증 정보가 보이는 화면을 공유하지 마세요.",
+requestTitle:"2. Agent 요청 제출",actionLabel:"행동",resourceLabel:"리소스",requestIdLabel:"요청 ID (재시도 시 동일한 ID 사용)",newId:"새 ID",paramsLabel:"매개변수 (JSON 객체)",submitBtn:"게이트웨이에 요청 제출",noRequest:"아직 제출한 요청이 없습니다.",
+approvalTitle:"3. 인간 승인 대기열",approvalDesc:"대기 중인 요청을 확인하고 판정하려면 검토자 인증 정보가 필요합니다.",refreshApprovals:"승인 대기열 새로고침",pending:"건 대기",noApprovalData:"승인 데이터를 불러오지 않았습니다.",selectedApprovalLabel:"선택한 승인 ID",approveBtn:"승인",denyBtn:"거부",executeBtn:"승인된 요청 실행",noApprovalAction:"아직 승인 작업을 수행하지 않았습니다.",
+howTitle:"4. 작동 방식",howText:"Agent 요청 → Python 정책 게이트웨이 → ALLOW / HUMAN_APPROVAL / BLOCK. 승인이 필요한 요청은 로컬 SQLite에 저장됩니다. 검토자가 판정한 뒤 최초 요청 Agent만 동일한 승인 요청을 한 번 실행할 수 있습니다. 모든 판정은 로컬 해시 연결 감사 로그에 기록됩니다.",
+footer:"이 콘솔은 로컬 프로토타입을 위한 얇은 클라이언트입니다. 백엔드를 상용 보안 제품으로 만들지는 않으며 실제 데이터베이스, 이메일 서비스, Agent 도구에도 연결되지 않습니다. 사용이 끝나면 API 서버를 종료하세요.",backLink:"← Simulation Studio로 돌아가기",
+connected:"로컬 API 연결 성공",healthFailed:"연결 실패",cleared:"이 페이지의 인증 정보를 지웠습니다.",missingAgent:"Agent 토큰을 입력하세요.",missingReviewer:"검토자 토큰을 입력하세요.",badEndpoint:"주소는 http이며 localhost 또는 127.0.0.1이어야 합니다.",badParams:"매개변수는 올바른 JSON 객체여야 합니다.",requestFailed:"요청 실패",approvalsFailed:"승인 대기열을 불러오지 못했습니다.",emptyQueue:"승인 대기 중인 요청이 없습니다.",approveSuccess:"승인 판정을 기록했습니다.",denySuccess:"거부 판정을 기록했습니다.",executeSuccess:"실행 완료 (모의 어댑터)",selectApproval:"승인 ID를 선택하거나 입력하세요.",replayed:"멱등성 재요청입니다. 게이트웨이는 두 번째 작업을 실행하지 않았습니다.",newRequest:"요청 ID를 생성했습니다.",
+sendEmail:"send_email (승인 필요)",blocked:"disable_custos (차단됨)"
+}}
+function setLanguage(next){
+ language=next;
+ document.documentElement.lang=next;
+ const map={
+ title:"title",intro:"intro",connectTitle:"connectTitle",endpointLabel:"endpointLabel",agentTokenLabel:"agentTokenLabel",reviewerTokenLabel:"reviewerTokenLabel",connectBtn:"connectBtn",clearTokens:"clearTokens",securityNote:"securityNote",requestTitle:"requestTitle",actionLabel:"actionLabel",resourceLabel:"resourceLabel",requestIdLabel:"requestIdLabel",newId:"newId",paramsLabel:"paramsLabel",submitBtn:"submitBtn",approvalTitle:"approvalTitle",approvalDesc:"approvalDesc",refreshApprovals:"refreshApprovals",selectedApprovalLabel:"selectedApprovalLabel",approveBtn:"approveBtn",denyBtn:"denyBtn",executeBtn:"executeBtn",howTitle:"howTitle",howText:"howText",footer:"footer",backLink:"backLink"
+ };
+ for(const id in map) $(id).textContent=text[next][map[id]];
+ $("noRequest").textContent=text[next].noRequest;
+ $("approvalCount").textContent="0 "+text[next].pending;
+ $("noApprovalAction").textContent=text[next].noApprovalAction;
+ $("ko").classList.toggle("active",next==="ko");$("en").classList.toggle("active",next==="en");
+}
+function setResult(el,value){el.textContent=typeof value==="string"?value:JSON.stringify(value,null,2)}
+function baseUrl(){
+ let u;
+ try{u=new URL($("endpoint").value.trim())}catch(e){throw new Error(text[language].badEndpoint)}
+ if(u.protocol!=="http:"||!(u.hostname==="127.0.0.1"||u.hostname==="localhost"||u.hostname==="[::1]"||u.hostname==="::1")) throw new Error(text[language].badEndpoint);
+ return u.origin;
+}
+async function api(path,method,body,token){
+ const url=baseUrl()+path;
+ const headers={};
+ if(body!==undefined) headers["Content-Type"]="application/json";
+ if(token) headers["Authorization"]="Bearer "+token;
+ let response;
+ try{
+  response=await fetch(url,{method:method||"GET",headers:headers,body:body===undefined?undefined:JSON.stringify(body),cache:"no-store"});
+ }catch(e){throw new Error("Network/CORS: "+e.message)}
+ let payload={};
+ try{payload=await response.json()}catch(e){payload={error:"Non-JSON response"}}
+ if(!response.ok) throw new Error(response.status+" "+(payload.error||response.statusText));
+ return payload;
+}
+function requireAgent(){const t=$("agentToken").value.trim();if(!t)throw new Error(text[language].missingAgent);return t}
+function requireReviewer(){const t=$("reviewerToken").value.trim();if(!t)throw new Error(text[language].missingReviewer);return t}
+function freshId(){
+ if(window.crypto&&crypto.randomUUID) return "web-"+crypto.randomUUID();
+ return "web-"+Date.now()+"-"+Math.random().toString(36).slice(2);
+}
+$("requestId").value=freshId();
+$("ko").addEventListener("click",()=>setLanguage("ko"));
+$("en").addEventListener("click",()=>setLanguage("en"));
+$("newId").addEventListener("click",()=>{$("requestId").value=freshId();setResult($("requestResult"),text[language].newRequest)});
+$("clearTokens").addEventListener("click",()=>{$("agentToken").value="";$("reviewerToken").value="";setResult($("requestResult"),text[language].cleared);setResult($("approvalResult"),text[language].cleared)});
+$("action").addEventListener("change",()=>{
+ const action=$("action").value;
+ if(action==="read_database"){$("resource").value="research_db";$("params").value=JSON.stringify({query:"market_trends"},null,2)}
+ if(action==="send_email"){$("resource").value="company_email";$("params").value=JSON.stringify({to:"demo@example.test",subject:"Custos approval simulation"},null,2)}
+ if(action==="disable_custos"){$("resource").value="custos_core";$("params").value="{}"}
+});
+$("connectBtn").addEventListener("click",async()=>{
+ $("healthDot").className="dot";
+ try{const health=await api("/health","GET");$("healthDot").className="dot ok";$("healthText").textContent=text[language].connected;setResult($("requestResult"),health)}
+ catch(e){$("healthDot").className="dot bad";$("healthText").textContent=text[language].healthFailed;setResult($("requestResult"),e.message)}
+});
+$("submitBtn").addEventListener("click",async()=>{
+ try{
+  const token=requireAgent();
+  let parameters;
+  try{parameters=JSON.parse($("params").value)}catch(e){throw new Error(text[language].badParams)}
+  if(!parameters||Array.isArray(parameters)||typeof parameters!=="object")throw new Error(text[language].badParams);
+  const body={action:$("action").value,resource:$("resource").value,parameters:parameters,request_id:$("requestId").value.trim()};
+  const result=await api("/v1/requests","POST",body,token);
+  setResult($("requestResult"),result);
+  if(result.replayed) $("requestResult").textContent+="\n\n"+text[language].replayed;
+  if(result.approval_id)$("selectedApproval").value=result.approval_id;
+  else if(result.decision==="ALLOW") $("requestId").value=freshId();
+ }catch(e){setResult($("requestResult"),text[language].requestFailed+": "+e.message)}
+});
+async function refreshApprovals(){
+ try{
+  const reviewer=requireReviewer();
+  const payload=await api("/v1/approvals","GET",undefined,reviewer);
+  const list=$("approvalList");list.innerHTML="";
+  const approvals=payload.approvals||[];
+  $("approvalCount").textContent=approvals.length+" "+text[language].pending;
+  if(!approvals.length){const p=document.createElement("p");p.className="note";p.textContent=text[language].emptyQueue;list.appendChild(p);return}
+  for(const item of approvals){
+   const div=document.createElement("div");div.className="approval";
+   if(item.approval_id===$("selectedApproval").value.trim())div.classList.add("selected");
+   const strong=document.createElement("strong");strong.textContent=item.request.action+" → "+item.request.resource;
+   const small=document.createElement("small");small.textContent=item.approval_id+" · "+item.request.agent_id+" · expires "+new Date(item.expires_at*1000).toLocaleString();
+   div.appendChild(strong);div.appendChild(small);
+   div.addEventListener("click",()=>{$("selectedApproval").value=item.approval_id;Array.from(list.children).forEach(x=>x.classList.remove("selected"));div.classList.add("selected")});
+   list.appendChild(div);
+  }
+ }catch(e){setResult($("approvalResult"),text[language].approvalsFailed+": "+e.message)}
+}
+$("refreshApprovals").addEventListener("click",refreshApprovals);
+async function review(decision){
+ try{
+  const reviewer=requireReviewer();const id=$("selectedApproval").value.trim();
+  if(!id)throw new Error(text[language].selectApproval);
+  const result=await api("/v1/approvals/"+encodeURIComponent(id)+"/review","POST",{decision:decision},reviewer);
+  setResult($("approvalResult"),result.status==="approved"?text[language].approveSuccess: text[language].denySuccess);
+  await refreshApprovals();
+ }catch(e){setResult($("approvalResult"),e.message)}
+}
+$("approveBtn").addEventListener("click",()=>review("approve"));
+$("denyBtn").addEventListener("click",()=>review("deny"));
+$("executeBtn").addEventListener("click",async()=>{
+ try{
+  const token=requireAgent();const id=$("selectedApproval").value.trim();
+  if(!id)throw new Error(text[language].selectApproval);
+  const result=await api("/v1/approvals/"+encodeURIComponent(id)+"/execute","POST",{},token);
+  setResult($("approvalResult"),result);
+  if(result.executed)setResult($("approvalResult"),{notice:text[language].executeSuccess,result:result});
+  await refreshApprovals();
+ }catch(e){setResult($("approvalResult"),e.message)}
+});
+setLanguage("en");
+})();
+</script>
+</body>
+</html>
