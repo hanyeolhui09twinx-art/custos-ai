@@ -99,6 +99,10 @@ if (!css.includes(".btn:not(.btn-secondary):not(.btn-dark),.header-cta,.run-case
 if (/@import\s+url/i.test(css)) throw new Error("Corporate CSS must not depend on external font imports.");
 if (!js.includes("review.hidden=!pending")) throw new Error("Human-approval demo does not reveal its review controls.");
 if (!js.includes("data-lang-button")) throw new Error("Bilingual control handler is missing.");
+if (!js.includes("syncDemoLanguage();")) throw new Error("Changing language must re-render the current demo state.");
+for (const state of ['demoState="idle"', 'demoState="decision"', 'demoState=approved?"approved":"denied"']) {
+  if (!js.includes(state)) throw new Error("Demo language synchronization is missing state: " + state);
+}
 if (!js.includes('event.key==="Escape"')) throw new Error("Mobile navigation must close on Escape.");
 if (!js.includes('toggle.focus()')) throw new Error("Escape handling must restore focus to the menu toggle.");
 
