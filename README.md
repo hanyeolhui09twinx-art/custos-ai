@@ -37,7 +37,7 @@ The site is built as static HTML, CSS, and JavaScript and deployed through GitHu
 - `custos_provider.py` — loopback-only mock tool-provider service. It independently verifies gateway permits and records consumed nonces in SQLite before dispatching to the exact mock Action/Resource registry.
 - `custos_api.py` — authenticated local HTTP API. It binds to loopback and allows browser CORS only from the official Custos GitHub Pages origin.
 - `audit_log.py` — local JSONL events linked by a SHA-256 hash chain.
-- `tests/test_custos.py` and `tests/test_provider_process.py` — gateway/API controls plus separate-process provider integration tests for missing/forged permits, request substitution, concurrent replay, restart-persistent replay rejection, and provider outage.
+- `tests/test_custos.py` and `tests/test_provider_process.py` — gateway/API controls plus separate-process provider integration tests for normal and human-approved dispatch, missing/forged permits, request substitution, concurrent replay, restart-persistent replay rejection, and provider outage.
 
 Demonstration policy:
 
