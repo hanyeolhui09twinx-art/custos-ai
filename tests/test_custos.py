@@ -67,6 +67,18 @@ class GatewayTestCase(unittest.TestCase):
             self.gateway.adapter.execute(request, forged)
         self.assertEqual(self.adapter.executed, [])
 
+    def test_dispatch_permit_rejects_malformed_claim_types(self) -> None:
+        request = self.request()
+        permit = self.gateway._dispatch_authority.issue(request, mode="ALLOW")
+        malformed_time = replace(permit, issued_at=float("nan"))
+        malformed_nonce = replace(permit, nonce=[])
+
+        with self.assertRaises(DispatchAuthorizationError):
+            self.gateway.adapter.execute(request, malformed_time)
+        with self.assertRaises(DispatchAuthorizationError):
+            self.gateway.adapter.execute(request, malformed_nonce)
+        self.assertEqual(self.adapter.executed, [])
+
     def test_dispatch_permit_is_bound_to_exact_request_payload(self) -> None:
         request = self.request()
         permit = self.gateway._dispatch_authority.issue(request, mode="ALLOW")
