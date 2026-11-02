@@ -160,7 +160,7 @@ for (const phrase of ["DAY 001", "DAY 002", "DAY 003", "DAY 004", "NOT VERIFIED"
 for (const log of ["day-001.md", "day-002.md", "day-003.md", "day-004.md"]) {
   if (!updates.includes(log)) throw new Error("Updates page is missing the source development log: " + log);
 }
-const developerDocs = fs.readFileSync(path.join(site, "developers.html"), "utf8");
+
 const apiSource = fs.readFileSync(path.join(root, "custos_api.py"), "utf8");
 for (const fragment of ['path == "/health"', 'path == "/v1/requests"', 'path == "/v1/approvals"', 'operation == "review"', 'operation == "execute"']) {
   if (!apiSource.includes(fragment)) throw new Error("API implementation route is missing: " + fragment);
