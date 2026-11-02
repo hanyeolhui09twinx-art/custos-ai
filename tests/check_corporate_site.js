@@ -6,7 +6,7 @@ const root = path.resolve(__dirname, "..");
 const site = path.join(root, "simulation-studio");
 const corporatePages = [
   "index.html", "platform.html", "technology.html", "security.html",
-  "research.html", "company.html", "contact.html", "privacy.html", "terms.html", "updates.html", "developers.html", "404.html"
+  "research.html", "mission.html", "partnerships.html", "media.html", "company.html", "contact.html", "privacy.html", "terms.html", "updates.html", "developers.html", "404.html"
 ];
 const toolPages = ["lab.html", "local-console.html", "security-ops.html"];
 const allPages = [...corporatePages, ...toolPages];
@@ -199,7 +199,7 @@ if (!developerDocs.includes('class="walkthrough-steps"') || !css.includes(".prot
   throw new Error("The product explanation UI styles are missing.");
 }
 
-for (const page of ["platform.html", "technology.html", "security.html", "research.html", "company.html", "contact.html", "privacy.html", "terms.html", "updates.html", "developers.html", "lab.html", "local-console.html", "security-ops.html"]) {
+for (const page of ["platform.html", "technology.html", "security.html", "research.html", "mission.html", "partnerships.html", "media.html", "company.html", "contact.html", "privacy.html", "terms.html", "updates.html", "developers.html", "lab.html", "local-console.html", "security-ops.html"]) {
   if (!home.includes("./" + page)) throw new Error("Homepage is missing navigation to " + page);
 }
 
