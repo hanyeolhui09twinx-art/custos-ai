@@ -20,6 +20,7 @@ from custos_gateway import (
     ApprovalNotFound,
     ApprovalStore,
     CustosGateway,
+    IDENTIFIER_RE,
 )
 
 MAX_BODY_BYTES = 65_536
