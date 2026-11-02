@@ -517,11 +517,20 @@ class ApprovalStore:
                 conn.rollback()
                 if row["request_digest"] != request.digest:
                     raise ApprovalConflict("request_id was already used with a different payload.")
-                if row["status"] == "completed" and row["response_json"]:
+                if row["status"] in {"completed", "indeterminate"} and row["response_json"]:
                     cached = json.loads(row["response_json"])
                     cached["replayed"] = True
                     return cached
-                raise ApprovalConflict("This request_id is already processing or has failed.")
+                if row["status"] == "indeterminate":
+                    return {
+                        "decision": "EXECUTION_UNKNOWN",
+                        "reason": "The gateway recovered an incomplete request; the provider receipt must be reconciled before any retry.",
+                        "executed": None,
+                        "execution_status": "unknown",
+                        "request_id": request.request_id,
+                        "replayed": True,
+                    }
+                raise ApprovalConflict("This request_id is already being processed or has failed.")
             conn.execute(
                 """INSERT INTO request_receipts
                    (agent_id, request_id, request_digest, status, created_at)
@@ -541,23 +550,63 @@ class ApprovalStore:
             if cursor.rowcount != 1:
                 raise ApprovalConflict("Request receipt could not be finalized.")
 
+    def recover_interrupted_requests(self) -> int:
+        """Mark requests left mid-flight by a prior gateway process as indeterminate."""
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            rows = conn.execute(
+                "SELECT agent_id, request_id FROM request_receipts WHERE status='processing'"
+            ).fetchall()
+            for row in rows:
+                response = {
+                    "decision": "EXECUTION_UNKNOWN",
+                    "reason": "The gateway restarted while processing this request. Reconcile the provider receipt using the same request ID; automatic redispatch is forbidden.",
+                    "executed": None,
+                    "execution_status": "unknown",
+                    "request_id": row["request_id"],
+                }
+                conn.execute(
+                    """UPDATE request_receipts SET status='indeterminate', response_json=?
+                       WHERE agent_id=? AND request_id=? AND status='processing'""",
+                    (canonical_json(response), row["agent_id"], row["request_id"]),
+                )
+            conn.commit()
+            return len(rows)
+
     def fail_request(self, request: ActionRequest) -> None:
+        """Treat unclassified failures conservatively; the downstream outcome may be unknown."""
+        response = {
+            "decision": "EXECUTION_UNKNOWN",
+            "reason": "Gateway processing failed before a durable result was committed. Reconcile using the same request ID; do not create a new ID.",
+            "executed": None,
+            "execution_status": "unknown",
+            "request_id": request.request_id,
+        }
         with self._connect() as conn:
             conn.execute(
-                """UPDATE request_receipts SET status='failed'
+                """UPDATE request_receipts SET status='indeterminate', response_json=?
                    WHERE agent_id=? AND request_id=? AND status='processing'""",
-                (request.agent_id, request.request_id),
+                (canonical_json(response), request.agent_id, request.request_id),
             )
 
     def update_request_result(self, request: ActionRequest, response: dict[str, Any]) -> None:
+        next_status = "indeterminate" if response.get("decision") == "EXECUTION_UNKNOWN" else "completed"
         with self._connect() as conn:
             cursor = conn.execute(
-                """UPDATE request_receipts SET response_json=?
-                   WHERE agent_id=? AND request_id=? AND status='completed'""",
-                (canonical_json(response), request.agent_id, request.request_id),
+                """UPDATE request_receipts SET status=?, response_json=?
+                   WHERE agent_id=? AND request_id=? AND status IN ('completed','indeterminate')""",
+                (next_status, canonical_json(response), request.agent_id, request.request_id),
             )
             if cursor.rowcount != 1:
-                raise ApprovalConflict("Completed request receipt was not found.")
+                raise ApprovalConflict("Request receipt was not found for reconciliation.")
+
+    def get_for_request(self, request: ActionRequest) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM approvals WHERE request_digest=? ORDER BY created_at DESC LIMIT 1",
+                (request.digest,),
+            ).fetchone()
+        return self._row_to_dict(row)
 
     def get_request_result(self, agent_id: str, request_id: str) -> dict[str, Any] | None:
         with self._connect() as conn:
@@ -737,6 +786,12 @@ class CustosGateway:
             raise ValueError("approval_ttl_seconds must be positive.")
         self.store = store
         self.audit_log = audit_log
+        recovered = self.store.recover_interrupted_requests()
+        if recovered:
+            self.audit_log.record(
+                "GATEWAY_RECOVERED_INCOMPLETE_REQUESTS",
+                {"count": recovered},
+            )
         self.policy_engine = policy_engine or PolicyEngine()
         self.clock = clock
         self.approval_ttl_seconds = approval_ttl_seconds
@@ -869,6 +924,53 @@ class CustosGateway:
             "execution_status": "unknown",
             "request_id": request.request_id,
         }
+        approval = self.store.get_for_request(request)
+        if approval is not None:
+            approval_status = approval.get("status")
+            approval_id = approval.get("approval_id")
+            approval_result = approval.get("result") if isinstance(approval.get("result"), dict) else {}
+            if approval_status in {"pending", "approved"}:
+                updated = {
+                    "decision": Decision.HUMAN_APPROVAL.value,
+                    "reason": "Recovered the existing request-bound human approval after a gateway restart.",
+                    "executed": False,
+                    "approval_id": approval_id,
+                    "status": approval_status,
+                    "expires_at": approval.get("expires_at"),
+                    "request_id": request.request_id,
+                    "recovered": True,
+                    "replayed": True,
+                }
+                self.store.update_request_result(request, updated)
+                return updated
+            if approval_status in {"denied", "expired", "blocked"}:
+                updated = {
+                    "decision": Decision.BLOCK.value if approval_status == "blocked" else Decision.HUMAN_APPROVAL.value,
+                    "reason": "Recovered the existing approval decision after a gateway restart.",
+                    "executed": False,
+                    "approval_id": approval_id,
+                    "status": approval_status,
+                    "request_id": request.request_id,
+                    "recovered": True,
+                    "replayed": True,
+                }
+                self.store.update_request_result(request, updated)
+                return updated
+            if approval_status == "executed":
+                updated = {
+                    "decision": Decision.ALLOW.value,
+                    "reason": "The approval store confirms this request was already executed.",
+                    "executed": True,
+                    "execution_status": "completed",
+                    "approval_id": approval_id,
+                    "result": approval_result,
+                    "request_id": request.request_id,
+                    "recovered": True,
+                    "replayed": True,
+                }
+                self.store.update_request_result(request, updated)
+                return updated
+
         try:
             receipt = self.adapter.get_receipt(request.agent_id, request.request_id)
         except Exception:
@@ -897,8 +999,16 @@ class CustosGateway:
                 "result": receipt["result"],
                 "request_id": request.request_id,
                 "reconciled": True,
+                "recovered": True,
                 "replayed": True,
             }
+            if approval is not None and approval.get("status") in {"executing", "indeterminate"}:
+                if approval.get("status") == "indeterminate":
+                    self.store.resolve_indeterminate_execution(
+                        approval["approval_id"], "executed", receipt["result"]
+                    )
+                else:
+                    self.store.finish_execution(approval["approval_id"], "executed", receipt["result"])
             self.audit_log.record(
                 "EXECUTION_RECONCILED_COMPLETED",
                 {"request_id": request.request_id, "agent_id": request.agent_id},
@@ -911,6 +1021,11 @@ class CustosGateway:
                 "reconciliation_status": state,
                 "replayed": True,
             }
+            if approval is not None and approval.get("status") == "executing":
+                self.store.finish_execution(
+                    approval["approval_id"], "indeterminate",
+                    {"reason": "Provider receipt did not confirm completion."},
+                )
             self.audit_log.record(
                 "EXECUTION_RECONCILED_UNRESOLVED",
                 {"request_id": request.request_id, "agent_id": request.agent_id, "provider_state": state},
@@ -975,7 +1090,7 @@ class CustosGateway:
 
     def execute_approved(self, approval_id: str, agent_id: str) -> dict[str, Any]:
         existing = self.store.get(approval_id)
-        if existing is not None and existing["status"] == "indeterminate":
+        if existing is not None and existing["status"] in {"indeterminate", "executing"}:
             request_data = existing["request"]
             if request_data.get("agent_id") != agent_id:
                 raise ApprovalForbidden("Only the requesting agent may reconcile this approval.")
@@ -994,9 +1109,11 @@ class CustosGateway:
                 raise ApprovalConflict("Approval is indeterminate but no execution-unknown receipt is available.")
             reconciled = self.reconcile_execution(request, cached_response)
             if reconciled.get("reconciled") and reconciled.get("execution_status") == "completed":
-                self.store.resolve_indeterminate_execution(
-                    approval_id, "executed", reconciled.get("result", {})
-                )
+                current = self.store.get(approval_id)
+                if current is not None and current["status"] == "indeterminate":
+                    self.store.resolve_indeterminate_execution(
+                        approval_id, "executed", reconciled.get("result", {})
+                    )
             return reconciled
 
         request = self.store.claim_for_execution(approval_id, agent_id, self.clock())
