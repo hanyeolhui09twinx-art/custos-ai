@@ -58,10 +58,14 @@ Generate fresh random tokens and keep them outside the repository. Do not paste 
 PowerShell example:
 
 ~~~powershell
-$env:CUSTOS_AGENT_TOKENS='{"research_agent":"REPLACE_WITH_RANDOM_TOKEN_OF_32_OR_MORE_CHARACTERS"}'
-$env:CUSTOS_REVIEWER_TOKEN='REPLACE_WITH_A_DIFFERENT_RANDOM_TOKEN_OF_32_OR_MORE_CHARACTERS'
+$agentToken = python -c "import secrets; print(secrets.token_urlsafe(32))"
+$reviewerToken = python -c "import secrets; print(secrets.token_urlsafe(32))"
+$env:CUSTOS_AGENT_TOKENS = '{"research_agent":"' + $agentToken + '"}'
+$env:CUSTOS_REVIEWER_TOKEN = $reviewerToken
 python custos_api.py
 ~~~
+
+Keep this terminal open while using the console. The tokens exist only in this shell environment; do not commit them or send them to anyone. Then open the [Local API Console](https://hanyeolhui09twinx-art.github.io/custos-ai/local-console.html), paste the two token values into their respective fields, and select **Test connection**. Your browser may ask you to allow Loopback network access for the Custos GitHub Pages site.
 
 The server binds to 127.0.0.1:8765 by default. Remote binding is rejected.
 
