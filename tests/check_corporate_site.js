@@ -247,6 +247,14 @@ if (!css.includes("@media(forced-colors:active)") || !css.includes("outline:2px 
 if (!css.includes(".code-panel pre{") || !css.includes("@media(max-width:760px){.code-head")) {
   throw new Error("Developer Docs code panels must support responsive horizontal scrolling.");
 }
+for (const selector of ['#setup-code', '#request-code', '#approval-code']) {
+  if (!developerDocs.includes('data-copy-code="' + selector + '"') || !developerDocs.includes('id="' + selector.slice(1) + '"')) {
+    throw new Error("Developer Docs is missing its code copy control for " + selector);
+  }
+}
+if (!js.includes('querySelectorAll("[data-copy-code]")') || !js.includes("window.navigator.clipboard.writeText") || !js.includes("selectFallback")) {
+  throw new Error("Code copy controls must provide clipboard and selection fallback behavior.");
+}
 if (!developerDocs.includes('class="code-panel"') || !developerDocs.includes('class="doc-note"')) {
   throw new Error("Developer Docs is missing styled code or safety-note panels.");
 }
