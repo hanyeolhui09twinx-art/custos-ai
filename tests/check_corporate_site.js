@@ -135,6 +135,13 @@ for (const page of ["platform.html", "technology.html", "security.html", "resear
   if (!home.includes("./" + page)) throw new Error("Homepage is missing navigation to " + page);
 }
 
+const updates = fs.readFileSync(path.join(site, "updates.html"), "utf8");
+for (const phrase of ["DAY 001", "DAY 002", "DAY 003", "DAY 004", "NOT VERIFIED", "mock execution adapter", "real-agent bypass resistance"]) {
+  if (!updates.toLowerCase().includes(phrase.toLowerCase())) throw new Error("Updates page is missing factual status item: " + phrase);
+}
+for (const log of ["day-001.md", "day-002.md", "day-003.md", "day-004.md"]) {
+  if (!updates.includes(log)) throw new Error("Updates page is missing the source development log: " + log);
+}
 const terms = fs.readFileSync(path.join(site, "terms.html"), "utf8");
 for (const phrase of ["Simulation Lab", "Local Control Room", "commercial SaaS", "development"]) {
   if (!terms.toLowerCase().includes(phrase.toLowerCase())) throw new Error("Terms of Use is missing boundary disclosure: " + phrase);
