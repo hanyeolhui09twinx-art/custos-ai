@@ -25,18 +25,25 @@ from custos_gateway import (
 MAX_BODY_BYTES = 65_536
 PROVIDER_PATH = "/v1/dispatch"
 RECEIPT_SIGNATURE_HEADER = "X-Custos-Receipt-Signature"
+RECEIPT_KEY_ID_HEADER = "X-Custos-Receipt-Key-Id"
 
 
-def receipt_lookup_signature(signing_key: bytes, request_path: str) -> str:
-    """Sign a GET receipt path with a domain-separated key derived from the dispatch key."""
+def receipt_lookup_signature(
+    signing_key: bytes,
+    request_path: str,
+    key_id: str = "default",
+) -> str:
+    """Sign a GET receipt path with a key-specific, domain-separated derived key."""
     if not isinstance(signing_key, bytes) or len(signing_key) < 32:
         raise ValueError("Receipt lookup signing key must be at least 32 bytes.")
+    if not isinstance(key_id, str) or not IDENTIFIER_RE.fullmatch(key_id):
+        raise ValueError("Receipt lookup key ID is invalid.")
     if not isinstance(request_path, str) or not request_path.startswith("/v1/receipts/") or "?" in request_path:
         raise ValueError("Receipt lookup path is invalid.")
     receipt_key = hmac.new(
-        signing_key, b"custos-ai/provider-receipt-lookup/v1", hashlib.sha256
+        signing_key, b"custos-ai/provider-receipt-lookup/v1/" + key_id.encode("ascii"), hashlib.sha256
     ).digest()
-    message = b"GET" + bytes([10]) + request_path.encode("utf-8")
+    message = b"GET" + bytes([10]) + key_id.encode("ascii") + bytes([10]) + request_path.encode("utf-8")
     return hmac.new(receipt_key, message, hashlib.sha256).hexdigest()
 
 
@@ -44,17 +51,48 @@ class DurableDispatchPermitVerifier:
     """Verify gateway-issued permits and persist nonce consumption in SQLite."""
 
     def __init__(
-        self, db_path: str | Path, signing_key: bytes,
-        clock: Callable[[], float] = time.time, max_ttl_seconds: float = 15.0,
+        self,
+        db_path: str | Path,
+        signing_key: bytes | None = None,
+        clock: Callable[[], float] = time.time,
+        max_ttl_seconds: float = 15.0,
+        signing_keys: dict[str, bytes] | None = None,
+        active_key_id: str = "default",
     ) -> None:
-        if not isinstance(signing_key, bytes) or len(signing_key) < 32:
-            raise ValueError("Provider signing key must be at least 32 bytes.")
-        if (isinstance(max_ttl_seconds, bool) or not isinstance(max_ttl_seconds, (int, float))
-                or not math.isfinite(max_ttl_seconds) or max_ttl_seconds <= 0):
+        if (
+            isinstance(max_ttl_seconds, bool)
+            or not isinstance(max_ttl_seconds, (int, float))
+            or not math.isfinite(max_ttl_seconds)
+            or max_ttl_seconds <= 0
+        ):
             raise ValueError("Provider TTL must be finite and positive.")
+        if not isinstance(active_key_id, str) or not IDENTIFIER_RE.fullmatch(active_key_id):
+            raise ValueError("Active provider key ID is invalid.")
+        keys: dict[str, bytes] = {}
+        if signing_keys is not None:
+            if not isinstance(signing_keys, dict) or not signing_keys:
+                raise ValueError("Provider key ring must be a non-empty mapping.")
+            for key_id, key_value in signing_keys.items():
+                if not isinstance(key_id, str) or not IDENTIFIER_RE.fullmatch(key_id):
+                    raise ValueError("Provider key IDs must be valid identifiers.")
+                if not isinstance(key_value, bytes) or len(key_value) < 32:
+                    raise ValueError("Every provider signing key must be at least 32 bytes.")
+                keys[key_id] = key_value
+        if signing_key is not None:
+            if not isinstance(signing_key, bytes) or len(signing_key) < 32:
+                raise ValueError("Provider signing key must be at least 32 bytes.")
+            prior = keys.get(active_key_id)
+            if prior is not None and not hmac.compare_digest(prior, signing_key):
+                raise ValueError("Provider active key conflicts with key-ring entry.")
+            keys[active_key_id] = signing_key
+        if not keys:
+            raise ValueError("At least one provider signing key is required.")
+        if active_key_id not in keys:
+            raise ValueError("Active provider key ID is not present in the key ring.")
         self.db_path = str(db_path)
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
-        self._key = signing_key
+        self._keys = keys
+        self._active_key_id = active_key_id
         self._clock = clock
         self._ttl = float(max_ttl_seconds)
         with self._connect() as conn:
@@ -69,11 +107,16 @@ class DurableDispatchPermitVerifier:
         conn.execute("PRAGMA synchronous=FULL")
         return conn
 
-    def verify_receipt_lookup(self, request_path: str, signature: str) -> bool:
+    def verify_receipt_lookup(self, request_path: str, key_id: str, signature: str) -> bool:
+        if not isinstance(key_id, str) or not IDENTIFIER_RE.fullmatch(key_id):
+            return False
+        key = self._keys.get(key_id)
+        if key is None:
+            return False
         if not isinstance(signature, str) or not re.fullmatch(r"[0-9a-f]{64}", signature):
             return False
         try:
-            expected = receipt_lookup_signature(self._key, request_path)
+            expected = receipt_lookup_signature(key, request_path, key_id)
         except (TypeError, ValueError, UnicodeEncodeError):
             return False
         return hmac.compare_digest(expected, signature)
@@ -94,6 +137,11 @@ class DurableDispatchPermitVerifier:
             raise DispatchAuthorizationError("ALLOW permit cannot contain an approval ID.")
         if permit.mode == "APPROVED" and (not isinstance(permit.approval_id, str) or not permit.approval_id):
             raise DispatchAuthorizationError("APPROVED permit requires an approval ID.")
+        if not isinstance(permit.key_id, str) or not IDENTIFIER_RE.fullmatch(permit.key_id):
+            raise DispatchAuthorizationError("Invalid permit key ID.")
+        signing_key = self._keys.get(permit.key_id)
+        if signing_key is None:
+            raise DispatchAuthorizationError("Permit key ID is not trusted by this provider.")
         if not isinstance(permit.nonce, str) or not re.fullmatch(r"[A-Za-z0-9_-]{16,128}", permit.nonce):
             raise DispatchAuthorizationError("Invalid permit nonce.")
         if not isinstance(permit.signature, str) or not re.fullmatch(r"[0-9a-f]{64}", permit.signature):
@@ -103,7 +151,7 @@ class DurableDispatchPermitVerifier:
                 raise DispatchAuthorizationError("Invalid permit timestamp.")
         try:
             expected = hmac.new(
-                self._key, canonical_json(DispatchAuthority._claims(permit)).encode("utf-8"),
+                signing_key, canonical_json(DispatchAuthority._claims(permit)).encode("utf-8"),
                 hashlib.sha256,
             ).hexdigest()
         except (TypeError, ValueError, RecursionError) as exc:
@@ -261,8 +309,8 @@ class ToolProviderService:
     def get_receipt(self, agent_id: str, request_id: str) -> dict[str, Any] | None:
         return self.receipts.get(agent_id, request_id)
 
-    def verify_receipt_lookup(self, request_path: str, signature: str) -> bool:
-        return self.verifier.verify_receipt_lookup(request_path, signature)
+    def verify_receipt_lookup(self, request_path: str, key_id: str, signature: str) -> bool:
+        return self.verifier.verify_receipt_lookup(request_path, key_id, signature)
 
     def dispatch(self, payload: Any) -> dict[str, Any]:
         if not isinstance(payload, dict) or set(payload) != {"request", "permit"}:
@@ -316,11 +364,12 @@ class ToolProviderHTTPServer(ThreadingHTTPServer):
                     if urlsplit(self.path).query:
                         self._send(400, {"error": "Receipt lookup does not accept query parameters."})
                         return
+                    key_id = self.headers.get(RECEIPT_KEY_ID_HEADER, "")
                     signature = self.headers.get(RECEIPT_SIGNATURE_HEADER, "")
-                    if not signature:
+                    if not key_id or not signature:
                         self._send(401, {"error": "Receipt lookup authentication is required."})
                         return
-                    if not self.server.service.verify_receipt_lookup(path, signature):  # type: ignore[attr-defined]
+                    if not self.server.service.verify_receipt_lookup(path, key_id, signature):  # type: ignore[attr-defined]
                         self._send(403, {"error": "Receipt lookup authentication failed."})
                         return
                     agent_id, request_id = unquote(parts[3]), unquote(parts[4])
@@ -370,12 +419,21 @@ class ToolProviderHTTPServer(ThreadingHTTPServer):
 
 
 def create_provider_server(
-    signing_key: bytes, db_path: str | Path = ".custos-data/provider-replay.sqlite3",
-    host: str = "127.0.0.1", port: int = 8766,
+    signing_key: bytes | None = None,
+    db_path: str | Path = ".custos-data/provider-replay.sqlite3",
+    host: str = "127.0.0.1",
+    port: int = 8766,
+    signing_keys: dict[str, bytes] | None = None,
+    active_key_id: str = "default",
 ) -> ToolProviderHTTPServer:
     if host != "127.0.0.1":
         raise ValueError("The mock provider only binds to loopback.")
-    verifier = DurableDispatchPermitVerifier(db_path, signing_key)
+    verifier = DurableDispatchPermitVerifier(
+        db_path,
+        signing_key=signing_key,
+        signing_keys=signing_keys,
+        active_key_id=active_key_id,
+    )
     service = ToolProviderService(verifier)
     return ToolProviderHTTPServer((host, port), service)
 
@@ -388,11 +446,30 @@ class HttpToolProviderAdapter:
         endpoint: str,
         timeout_seconds: float = 3.0,
         receipt_signing_key: bytes | None = None,
+        receipt_signing_keys: dict[str, bytes] | None = None,
+        receipt_signing_key_id: str = "default",
     ) -> None:
-        if receipt_signing_key is not None and (
-            not isinstance(receipt_signing_key, bytes) or len(receipt_signing_key) < 32
-        ):
-            raise ValueError("Receipt signing key must be at least 32 bytes.")
+        if not isinstance(receipt_signing_key_id, str) or not IDENTIFIER_RE.fullmatch(receipt_signing_key_id):
+            raise ValueError("Receipt signing key ID is invalid.")
+        receipt_keys: dict[str, bytes] = {}
+        if receipt_signing_keys is not None:
+            if not isinstance(receipt_signing_keys, dict) or not receipt_signing_keys:
+                raise ValueError("Receipt signing key ring must be a non-empty mapping.")
+            for key_id, key_value in receipt_signing_keys.items():
+                if not isinstance(key_id, str) or not IDENTIFIER_RE.fullmatch(key_id):
+                    raise ValueError("Receipt key IDs must be valid identifiers.")
+                if not isinstance(key_value, bytes) or len(key_value) < 32:
+                    raise ValueError("Every receipt signing key must be at least 32 bytes.")
+                receipt_keys[key_id] = key_value
+        if receipt_signing_key is not None:
+            if not isinstance(receipt_signing_key, bytes) or len(receipt_signing_key) < 32:
+                raise ValueError("Receipt signing key must be at least 32 bytes.")
+            prior = receipt_keys.get(receipt_signing_key_id)
+            if prior is not None and not hmac.compare_digest(prior, receipt_signing_key):
+                raise ValueError("Receipt active key conflicts with key-ring entry.")
+            receipt_keys[receipt_signing_key_id] = receipt_signing_key
+        if receipt_keys and receipt_signing_key_id not in receipt_keys:
+            raise ValueError("Active receipt key ID is not present in the key ring.")
         parsed = urlsplit(endpoint)
         if (parsed.scheme != "http" or parsed.hostname != "127.0.0.1"
                 or parsed.username is not None or parsed.password is not None
@@ -403,7 +480,8 @@ class HttpToolProviderAdapter:
             raise ValueError("Provider timeout must be finite and positive.")
         self.endpoint = endpoint
         self.timeout_seconds = float(timeout_seconds)
-        self.receipt_signing_key = receipt_signing_key
+        self.receipt_signing_keys = receipt_keys
+        self.receipt_signing_key_id = receipt_signing_key_id
 
     def execute(self, request: ActionRequest) -> dict[str, Any]:
         raise DispatchAuthorizationError("The provider requires a gateway-issued permit.")
@@ -442,19 +520,25 @@ class HttpToolProviderAdapter:
         return result["result"]
 
     def get_receipt(self, agent_id: str, request_id: str) -> dict[str, Any] | None:
-        if self.receipt_signing_key is None:
-            raise RuntimeError("Authenticated provider receipt lookup requires the dispatch signing key.")
+        key_id = self.receipt_signing_key_id
+        signing_key = self.receipt_signing_keys.get(key_id)
+        if signing_key is None:
+            raise RuntimeError("Authenticated provider receipt lookup requires the active dispatch signing key.")
         if not isinstance(agent_id, str) or not IDENTIFIER_RE.fullmatch(agent_id):
             raise ValueError("Receipt Agent ID is invalid.")
         if not isinstance(request_id, str) or not REQUEST_ID_RE.fullmatch(request_id):
             raise ValueError("Receipt request ID is invalid.")
         path = "/v1/receipts/" + quote(agent_id, safe="") + "/" + quote(request_id, safe="")
         url = self.endpoint.rsplit(PROVIDER_PATH, 1)[0] + path
-        signature = receipt_lookup_signature(self.receipt_signing_key, path)
+        signature = receipt_lookup_signature(signing_key, path, key_id)
         outbound = Request(
             url,
             method="GET",
-            headers={RECEIPT_SIGNATURE_HEADER: signature, "Accept": "application/json"},
+            headers={
+                RECEIPT_KEY_ID_HEADER: key_id,
+                RECEIPT_SIGNATURE_HEADER: signature,
+                "Accept": "application/json",
+            },
         )
         try:
             with urlopen(outbound, timeout=self.timeout_seconds) as response:
@@ -476,13 +560,45 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8766)
     parser.add_argument("--db", default=".custos-data/provider-replay.sqlite3")
     args = parser.parse_args()
-    try:
-        key = bytes.fromhex(os.environ.get("CUSTOS_DISPATCH_SIGNING_KEY", ""))
-    except ValueError as exc:
-        raise SystemExit("CUSTOS_DISPATCH_SIGNING_KEY must be hexadecimal.") from exc
-    if len(key) < 32:
-        raise SystemExit("CUSTOS_DISPATCH_SIGNING_KEY must encode at least 32 bytes.")
-    server = create_provider_server(key, db_path=args.db, host=args.host, port=args.port)
+    active_key_id = os.environ.get("CUSTOS_ACTIVE_DISPATCH_KEY_ID", "default")
+    raw_key_ring = os.environ.get("CUSTOS_DISPATCH_KEYS", "")
+    if raw_key_ring:
+        try:
+            encoded_keys = json.loads(raw_key_ring)
+        except json.JSONDecodeError as exc:
+            raise SystemExit("CUSTOS_DISPATCH_KEYS must be a JSON object.") from exc
+        if not isinstance(encoded_keys, dict) or not encoded_keys:
+            raise SystemExit("CUSTOS_DISPATCH_KEYS must be a non-empty JSON object.")
+        key_ring: dict[str, bytes] = {}
+        for key_id, key_hex in encoded_keys.items():
+            if not isinstance(key_id, str) or not IDENTIFIER_RE.fullmatch(key_id):
+                raise SystemExit("CUSTOS_DISPATCH_KEYS contains an invalid key ID.")
+            if not isinstance(key_hex, str):
+                raise SystemExit("Every CUSTOS_DISPATCH_KEYS value must be hexadecimal.")
+            try:
+                key_value = bytes.fromhex(key_hex)
+            except ValueError as exc:
+                raise SystemExit(f"Dispatch key {key_id!r} must be hexadecimal.") from exc
+            if len(key_value) < 32:
+                raise SystemExit(f"Dispatch key {key_id!r} must encode at least 32 bytes.")
+            key_ring[key_id] = key_value
+        if active_key_id not in key_ring:
+            raise SystemExit("CUSTOS_ACTIVE_DISPATCH_KEY_ID must exist in CUSTOS_DISPATCH_KEYS.")
+        server = create_provider_server(
+            db_path=args.db, host=args.host, port=args.port,
+            signing_keys=key_ring, active_key_id=active_key_id,
+        )
+    else:
+        try:
+            key = bytes.fromhex(os.environ.get("CUSTOS_DISPATCH_SIGNING_KEY", ""))
+        except ValueError as exc:
+            raise SystemExit("CUSTOS_DISPATCH_SIGNING_KEY must be hexadecimal.") from exc
+        if len(key) < 32:
+            raise SystemExit("CUSTOS_DISPATCH_SIGNING_KEY must encode at least 32 bytes.")
+        server = create_provider_server(
+            key, db_path=args.db, host=args.host, port=args.port,
+            active_key_id=active_key_id,
+        )
     print(f"Custos mock tool provider listening on {args.host}:{args.port}", flush=True)
     try:
         server.serve_forever()
