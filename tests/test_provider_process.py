@@ -251,6 +251,9 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
             result = gateway.submit(request)
             self.assertEqual(result["decision"], "ALLOW")
             self.assertTrue(result["executed"])
+            receipt = gateway.adapter.get_receipt(request.agent_id, request.request_id)
+            self.assertIsNotNone(receipt)
+            self.assertEqual(receipt["request_digest"], request.digest)
         finally:
             self._stop_provider()
             self._start_provider(signing_keys=KEY_RING, active_key_id="default")
