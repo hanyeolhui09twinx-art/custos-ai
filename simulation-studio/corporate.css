@@ -36,3 +36,7 @@
 .skip-link{position:absolute;top:-60px;left:18px;z-index:300;background:var(--accent);color:#fff;padding:11px 15px;font-size:11px;font-weight:700;transition:top .15s}
 .skip-link:focus{top:10px}
 :focus-visible{scroll-margin-top:110px}
+
+#demoReview:not([hidden]){display:flex;flex-wrap:wrap;align-items:center}
+#demoReview button{min-width:108px}
+.case-btn[aria-pressed="true"]{border-color:#e77b53;background:#1b3542}
