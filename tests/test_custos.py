@@ -89,6 +89,24 @@ class GatewayTestCase(unittest.TestCase):
             self.gateway.execute_approved(approval_id, "research_agent")
         self.assertEqual(len(self.adapter.executed), 1)
 
+    def test_denial_updates_cached_request_status(self) -> None:
+        request = ActionRequest.from_payload(
+            "research_agent",
+            {
+                "action": "send_email",
+                "resource": "company_email",
+                "parameters": {"to": "deny@example.test"},
+                "request_id": "approval-denied-001",
+            },
+        )
+        created = self.gateway.submit(request)
+        self.gateway.review_approval(created["approval_id"], "reviewer-1", False)
+        replay = self.gateway.submit(request)
+        self.assertTrue(replay["replayed"])
+        self.assertEqual(replay["status"], "denied")
+        self.assertFalse(replay["executed"])
+        self.assertEqual(self.adapter.executed, [])
+
     def test_denial_never_executes(self) -> None:
         result = self.gateway.submit(self.request("send_email", "company_email"))
         self.gateway.review_approval(result["approval_id"], "reviewer-1", False)
