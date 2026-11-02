@@ -138,3 +138,4 @@ Custos should currently be described as a local research prototype with a mock e
 - [Day 002](devlog/day-002.md)
 - [Day 003 — Corporate website and public interface](devlog/day-003.md)
 - [Day 004 — Public updates journal](devlog/day-004.md)
+- [Day 005 — Product experience and explanation](devlog/day-005.md)
