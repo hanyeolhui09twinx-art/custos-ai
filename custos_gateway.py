@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import re
+import secrets
 import sqlite3
+import threading
 import time
 import uuid
 from dataclasses import asdict, dataclass
@@ -42,6 +45,10 @@ class ApprovalExpired(ApprovalError):
 
 class ApprovalForbidden(ApprovalError):
     pass
+
+
+class DispatchAuthorizationError(ApprovalError):
+    """A dispatch permit is absent, invalid, expired, replayed, or no longer authorized."""
 
 
 def canonical_json(value: Any) -> str:
@@ -199,6 +206,146 @@ class PolicyEngine:
 class ExecutionAdapter(Protocol):
     def execute(self, request: ActionRequest) -> dict[str, Any]:
         ...
+
+
+@dataclass(frozen=True)
+class DispatchPermit:
+    """Short-lived, request-bound capability minted only by the local gateway."""
+
+    request_digest: str
+    mode: str
+    approval_id: str | None
+    issued_at: float
+    expires_at: float
+    nonce: str
+    signature: str
+
+
+class DispatchAuthority:
+    """Issues and consumes one-time HMAC-authenticated dispatch capabilities."""
+
+    def __init__(
+        self,
+        clock: Callable[[], float] = time.time,
+        ttl_seconds: float = 15.0,
+        signing_key: bytes | None = None,
+    ) -> None:
+        if ttl_seconds <= 0:
+            raise ValueError("Dispatch permit TTL must be positive.")
+        self._clock = clock
+        self._ttl_seconds = float(ttl_seconds)
+        self._signing_key = signing_key or secrets.token_bytes(32)
+        if len(self._signing_key) < 32:
+            raise ValueError("Dispatch signing key must contain at least 32 bytes.")
+        self._used_nonces: set[str] = set()
+        self._lock = threading.Lock()
+
+    @staticmethod
+    def _claims(permit: DispatchPermit) -> dict[str, Any]:
+        return {
+            "request_digest": permit.request_digest,
+            "mode": permit.mode,
+            "approval_id": permit.approval_id,
+            "issued_at": permit.issued_at,
+            "expires_at": permit.expires_at,
+            "nonce": permit.nonce,
+        }
+
+    def issue(
+        self,
+        request: ActionRequest,
+        *,
+        mode: str,
+        approval_id: str | None = None,
+    ) -> DispatchPermit:
+        if mode not in {"ALLOW", "APPROVED"}:
+            raise ValueError("Dispatch permit mode must be ALLOW or APPROVED.")
+        if mode == "ALLOW" and approval_id is not None:
+            raise ValueError("An ALLOW permit cannot carry a human approval ID.")
+        if mode == "APPROVED" and (not isinstance(approval_id, str) or not approval_id):
+            raise ValueError("An APPROVED permit must be bound to an approval ID.")
+
+        issued_at = self._clock()
+        unsigned = DispatchPermit(
+            request_digest=request.digest,
+            mode=mode,
+            approval_id=approval_id,
+            issued_at=issued_at,
+            expires_at=issued_at + self._ttl_seconds,
+            nonce=secrets.token_urlsafe(24),
+            signature="",
+        )
+        signature = hmac.new(
+            self._signing_key,
+            canonical_json(self._claims(unsigned)).encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        return DispatchPermit(
+            request_digest=unsigned.request_digest,
+            mode=unsigned.mode,
+            approval_id=unsigned.approval_id,
+            issued_at=unsigned.issued_at,
+            expires_at=unsigned.expires_at,
+            nonce=unsigned.nonce,
+            signature=signature,
+        )
+
+    def consume(self, request: ActionRequest, permit: DispatchPermit) -> None:
+        if not isinstance(permit, DispatchPermit):
+            raise DispatchAuthorizationError("A valid dispatch permit is required.")
+        if permit.request_digest != request.digest:
+            raise DispatchAuthorizationError("Dispatch permit does not match this exact request.")
+        if permit.mode not in {"ALLOW", "APPROVED"}:
+            raise DispatchAuthorizationError("Dispatch permit mode is invalid.")
+        if permit.mode == "ALLOW" and permit.approval_id is not None:
+            raise DispatchAuthorizationError("ALLOW permits cannot carry approval IDs.")
+        if permit.mode == "APPROVED" and not permit.approval_id:
+            raise DispatchAuthorizationError("APPROVED permits must be bound to an approval ID.")
+        if not permit.nonce or not permit.signature:
+            raise DispatchAuthorizationError("Dispatch permit is incomplete.")
+
+        expected = hmac.new(
+            self._signing_key,
+            canonical_json(self._claims(permit)).encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        if not hmac.compare_digest(expected, permit.signature):
+            raise DispatchAuthorizationError("Dispatch permit signature is invalid.")
+
+        now = self._clock()
+        lifetime = permit.expires_at - permit.issued_at
+        if permit.issued_at > now or permit.expires_at <= now or lifetime <= 0 or lifetime > self._ttl_seconds:
+            raise DispatchAuthorizationError("Dispatch permit is expired or outside its validity window.")
+
+        # The replay claim is atomic within this process. A distributed deployment
+        # must replace this in-memory set with a shared durable nonce store.
+        with self._lock:
+            if permit.nonce in self._used_nonces:
+                raise DispatchAuthorizationError("Dispatch permit has already been consumed.")
+            self._used_nonces.add(permit.nonce)
+
+
+class GuardedExecutionAdapter:
+    """The only adapter exposed to CustosGateway; it checks the actual dispatch boundary."""
+
+    def __init__(
+        self,
+        delegate: ExecutionAdapter,
+        policy_engine: PolicyEngine,
+        dispatch_authority: DispatchAuthority,
+    ) -> None:
+        self._delegate = delegate
+        self._policy_engine = policy_engine
+        self._dispatch_authority = dispatch_authority
+
+    def execute(self, request: ActionRequest, permit: DispatchPermit) -> dict[str, Any]:
+        self._dispatch_authority.consume(request, permit)
+        decision, _ = self._policy_engine.evaluate(request)
+        if permit.mode == "ALLOW" and decision is not Decision.ALLOW:
+            raise DispatchAuthorizationError("Current policy no longer permits this dispatch.")
+        if permit.mode == "APPROVED" and decision is Decision.BLOCK:
+            raise DispatchAuthorizationError("Current policy blocks this previously approved dispatch.")
+        return self._delegate.execute(request)
 
 
 class MockExecutionAdapter:
@@ -450,10 +597,15 @@ class CustosGateway:
             raise ValueError("approval_ttl_seconds must be positive.")
         self.store = store
         self.audit_log = audit_log
-        self.adapter = adapter or MockExecutionAdapter()
         self.policy_engine = policy_engine or PolicyEngine()
-        self.approval_ttl_seconds = approval_ttl_seconds
         self.clock = clock
+        self.approval_ttl_seconds = approval_ttl_seconds
+        self._dispatch_authority = DispatchAuthority(clock=clock, ttl_seconds=15.0)
+        self.adapter = GuardedExecutionAdapter(
+            delegate=adapter or MockExecutionAdapter(),
+            policy_engine=self.policy_engine,
+            dispatch_authority=self._dispatch_authority,
+        )
 
     def submit(self, request: ActionRequest) -> dict[str, Any]:
         now = self.clock()
@@ -521,7 +673,8 @@ class CustosGateway:
                 "request_id": request.request_id,
             }
 
-        result = self.adapter.execute(request)
+        permit = self._dispatch_authority.issue(request, mode="ALLOW")
+        result = self.adapter.execute(request, permit)
         self.audit_log.record("EXECUTION_SIMULATED", {"request_id": request.request_id, "result": result})
         return {
             "decision": Decision.ALLOW.value,
@@ -604,7 +757,12 @@ class CustosGateway:
                 self.store.update_request_result(request, response)
                 return response
 
-            result = self.adapter.execute(request)
+            permit = self._dispatch_authority.issue(
+                request,
+                mode="APPROVED",
+                approval_id=approval_id,
+            )
+            result = self.adapter.execute(request, permit)
             self.store.finish_execution(approval_id, "executed", result)
             self.audit_log.record(
                 "APPROVED_ACTION_EXECUTED",
