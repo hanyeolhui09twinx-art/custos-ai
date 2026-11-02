@@ -17,6 +17,7 @@ It contains dedicated pages for:
 - Privacy — data handling for the static site and browser tools
 - Terms of Use — usage boundaries and prototype limitations
 - Updates — engineering milestones, verification scope, and next gates
+- Developer Docs — local API setup, request schema, approval flow, routes, and prototype caveats
 
 The corporate site is static HTML/CSS/JavaScript. It has no hosted application backend and is not a commercial SaaS service.
 
