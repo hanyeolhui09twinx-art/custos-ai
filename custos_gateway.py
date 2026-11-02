@@ -1191,11 +1191,27 @@ class CustosGateway:
             return response
         except Exception as exc:
             try:
-                self.store.finish_execution(approval_id, "failed", {"error": type(exc).__name__})
+                self.store.finish_execution(
+                    approval_id,
+                    "indeterminate",
+                    {"error": type(exc).__name__, "reason": "The execution path failed without a durable confirmation; downstream outcome may be unknown."},
+                )
+            except ApprovalError:
+                pass
+            response = {
+                "decision": "EXECUTION_UNKNOWN",
+                "reason": "Approved execution encountered an unclassified failure. Reconcile the same request ID against the provider receipt; do not create a new ID.",
+                "executed": None,
+                "execution_status": "indeterminate",
+                "approval_id": approval_id,
+                "request_id": request.request_id,
+            }
+            try:
+                self.store.update_request_result(request, response)
             except ApprovalError:
                 pass
             self.audit_log.record(
-                "APPROVED_ACTION_FAILED",
+                "APPROVED_ACTION_OUTCOME_UNKNOWN",
                 {"approval_id": approval_id, "request_id": request.request_id, "error": type(exc).__name__},
             )
-            raise
+            return response
