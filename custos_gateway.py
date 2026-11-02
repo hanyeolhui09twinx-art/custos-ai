@@ -984,6 +984,11 @@ class CustosGateway:
 
         if receipt is None:
             updated = {**cached, "reconciliation_status": "receipt_not_found", "replayed": True}
+            if approval is not None and approval.get("status") == "executing":
+                self.store.finish_execution(
+                    approval["approval_id"], "indeterminate",
+                    {"reason": "No provider completion receipt was available after gateway recovery."},
+                )
         elif receipt.get("request_digest") != request.digest:
             updated = {**cached, "reconciliation_status": "receipt_digest_mismatch", "replayed": True}
             self.audit_log.record(
@@ -1106,7 +1111,14 @@ class CustosGateway:
             cached_row = self.store.get_request_result(agent_id, request.request_id)
             cached_response = cached_row.get("response") if cached_row else None
             if not isinstance(cached_response, dict) or cached_response.get("decision") != "EXECUTION_UNKNOWN":
-                raise ApprovalConflict("Approval is indeterminate but no execution-unknown receipt is available.")
+                cached_response = {
+                    "decision": "EXECUTION_UNKNOWN",
+                    "reason": "The gateway restarted during approved execution. Reconcile the provider receipt before taking further action.",
+                    "executed": None,
+                    "execution_status": "unknown",
+                    "approval_id": approval_id,
+                    "request_id": request.request_id,
+                }
             reconciled = self.reconcile_execution(request, cached_response)
             if reconciled.get("reconciled") and reconciled.get("execution_status") == "completed":
                 current = self.store.get(approval_id)
