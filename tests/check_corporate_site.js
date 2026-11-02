@@ -142,6 +142,24 @@ for (const phrase of ["DAY 001", "DAY 002", "DAY 003", "DAY 004", "NOT VERIFIED"
 for (const log of ["day-001.md", "day-002.md", "day-003.md", "day-004.md"]) {
   if (!updates.includes(log)) throw new Error("Updates page is missing the source development log: " + log);
 }
+const openApiPath = path.join(site, "openapi.json");
+const openApi = JSON.parse(fs.readFileSync(openApiPath, "utf8"));
+if (openApi.openapi !== "3.1.0") throw new Error("OpenAPI contract must use version 3.1.0.");
+for (const route of ["/health", "/v1/requests", "/v1/approvals", "/v1/approvals/{approval_id}/review", "/v1/approvals/{approval_id}/execute"]) {
+  if (!openApi.paths[route]) throw new Error("OpenAPI contract is missing route " + route);
+}
+if (!openApi.servers.some(server => server.url === "http://127.0.0.1:8765")) {
+  throw new Error("OpenAPI contract must describe the local loopback server.");
+}
+if (!openApi.components.securitySchemes.AgentBearer || !openApi.components.securitySchemes.ReviewerBearer) {
+  throw new Error("OpenAPI contract must distinguish Agent and Reviewer credentials.");
+}
+if (!openApi.paths["/v1/approvals/{approval_id}/execute"].post.requestBody.required) {
+  throw new Error("OpenAPI contract must preserve the required execute request body.");
+}
+if (JSON.stringify(openApi.paths["/v1/approvals/{approval_id}/execute"].post.requestBody).indexOf("{}") < 0) {
+  throw new Error("OpenAPI execute request must document an empty JSON object.");
+}
 const developerDocs = fs.readFileSync(path.join(site, "developers.html"), "utf8");
 if (!developerDocs.includes('Invoke-RestMethod -Method Post') || !developerDocs.includes('Bearer $reviewerToken') || !developerDocs.includes('PASTE_APPROVAL_ID_HERE')) {
   throw new Error("Developer Docs must contain a working-style local request and approval walkthrough.");
@@ -187,6 +205,7 @@ if (!pullRequestTemplate.includes("No credentials, tokens") || !pullRequestTempl
   throw new Error("Pull request template is missing security scope checks.");
 }
 if (!developerDocs.includes("CONTRIBUTING.md")) throw new Error("Developer Docs must link the contribution guide.");
+if (!developerDocs.includes("./openapi.json")) throw new Error("Developer Docs must link the machine-readable OpenAPI contract.");
 const issueTemplates = path.join(root, ".github", "ISSUE_TEMPLATE");
 for (const template of ["bug_report.yml", "research_proposal.yml", "config.yml"]) {
   if (!fs.existsSync(path.join(issueTemplates, template))) throw new Error("Missing GitHub issue template: " + template);
