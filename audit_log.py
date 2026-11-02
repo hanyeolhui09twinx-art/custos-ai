@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -9,150 +11,113 @@ from typing import Any
 
 class AuditLog:
     """
-    Tamper-evident audit log for Custos AI.
+    Hash-chained local audit log.
 
-    Each event contains the hash of the previous event.
-    If an old entry is modified, the hash chain no longer matches.
+    This detects accidental edits and partial tampering in the recorded chain.
+    It is not immutable storage: an attacker who can rewrite the entire file can
+    recompute the chain. Production deployments need remote/WORM storage and
+    independent signing or anchoring.
     """
 
     def __init__(self, file_path: str = "custos_audit.jsonl") -> None:
         self.file_path = Path(file_path)
+        self.file_path.parent.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.RLock()
+        if not self.verify():
+            raise ValueError("Audit log is corrupted; refusing to append.")
         self.previous_hash = self._get_last_hash()
+
+    @staticmethod
+    def _canonical(entry: dict[str, Any]) -> bytes:
+        return json.dumps(
+            entry,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
 
     def _get_last_hash(self) -> str:
         if not self.file_path.exists():
             return "GENESIS"
 
-        last_line = None
-
+        last_hash = "GENESIS"
         with self.file_path.open("r", encoding="utf-8") as file:
             for line in file:
-                if line.strip():
-                    last_line = line.strip()
+                if not line.strip():
+                    continue
+                try:
+                    entry = json.loads(line)
+                    last_hash = entry["entry_hash"]
+                except (json.JSONDecodeError, KeyError, TypeError) as exc:
+                    raise ValueError("Audit log is corrupted.") from exc
+        return last_hash
 
-        if last_line is None:
-            return "GENESIS"
+    def record(self, event: str, data: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(event, str) or not event.strip():
+            raise ValueError("event must be a non-empty string.")
+        if not isinstance(data, dict):
+            raise ValueError("audit data must be a JSON object.")
 
-        try:
-            last_entry = json.loads(last_line)
-            return last_entry["entry_hash"]
-        except (json.JSONDecodeError, KeyError):
-            raise ValueError("Audit log is corrupted.")
+        with self._lock:
+            # Detect changes made since this AuditLog instance was initialized.
+            if not self.verify():
+                raise ValueError("Audit log integrity check failed; refusing to append.")
+            current_hash = self._get_last_hash()
+            if current_hash != self.previous_hash:
+                raise ValueError("Audit log changed outside this writer; refusing to append.")
 
-    def record(
-        self,
-        event: str,
-        data: dict[str, Any],
-    ) -> dict[str, Any]:
+            entry = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "event": event,
+                "data": data,
+                "previous_hash": self.previous_hash,
+            }
+            entry_hash = hashlib.sha256(self._canonical(entry)).hexdigest()
+            entry["entry_hash"] = entry_hash
 
-        entry = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "event": event,
-            "data": data,
-            "previous_hash": self.previous_hash,
-        }
+            with self.file_path.open("a", encoding="utf-8") as file:
+                file.write(json.dumps(entry, ensure_ascii=False, sort_keys=True, allow_nan=False) + "\n")
+                file.flush()
+                os.fsync(file.fileno())
 
-        canonical_entry = json.dumps(
-            entry,
-            sort_keys=True,
-            separators=(",", ":"),
-            ensure_ascii=False,
-        )
-
-        entry_hash = hashlib.sha256(
-            canonical_entry.encode("utf-8")
-        ).hexdigest()
-
-        entry["entry_hash"] = entry_hash
-
-        with self.file_path.open("a", encoding="utf-8") as file:
-            file.write(
-                json.dumps(
-                    entry,
-                    ensure_ascii=False,
-                )
-                + "\n"
-            )
-
-        self.previous_hash = entry_hash
-
-        return entry
+            self.previous_hash = entry_hash
+            return entry
 
     def verify(self) -> bool:
-        """
-        Verify the entire hash chain.
-
-        Returns False if any entry was changed or the chain is broken.
-        """
-
         if not self.file_path.exists():
             return True
 
         previous_hash = "GENESIS"
+        try:
+            with self.file_path.open("r", encoding="utf-8") as file:
+                for line in file:
+                    if not line.strip():
+                        continue
+                    entry = json.loads(line)
+                    if not isinstance(entry, dict):
+                        return False
+                    stored_hash = entry.get("entry_hash")
+                    if not isinstance(stored_hash, str):
+                        return False
+                    if entry.get("previous_hash") != previous_hash:
+                        return False
 
-        with self.file_path.open("r", encoding="utf-8") as file:
-
-            for line in file:
-                if not line.strip():
-                    continue
-
-                entry = json.loads(line)
-
-                stored_hash = entry.get("entry_hash")
-                stored_previous_hash = entry.get("previous_hash")
-
-                if stored_previous_hash != previous_hash:
-                    return False
-
-                data_without_hash = dict(entry)
-                del data_without_hash["entry_hash"]
-
-                canonical_entry = json.dumps(
-                    data_without_hash,
-                    sort_keys=True,
-                    separators=(",", ":"),
-                    ensure_ascii=False,
-                )
-
-                calculated_hash = hashlib.sha256(
-                    canonical_entry.encode("utf-8")
-                ).hexdigest()
-
-                if calculated_hash != stored_hash:
-                    return False
-
-                previous_hash = stored_hash
-
+                    unsigned_entry = dict(entry)
+                    del unsigned_entry["entry_hash"]
+                    calculated_hash = hashlib.sha256(self._canonical(unsigned_entry)).hexdigest()
+                    if not hashlib.compare_digest(calculated_hash, stored_hash):
+                        return False
+                    previous_hash = stored_hash
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError):
+            return False
         return True
 
 
 if __name__ == "__main__":
-
     log = AuditLog("custos_audit.jsonl")
-
     log.record(
-        "ACTION_REQUEST",
-        {
-            "agent_id": "research_agent",
-            "action": "read_database",
-            "resource": "research_db",
-        },
+        "EXAMPLE_EVENT",
+        {"agent_id": "research_agent", "action": "read_database"},
     )
-
-    log.record(
-        "DECISION",
-        {
-            "decision": "ALLOW",
-            "reason": "Policy checks passed.",
-        },
-    )
-
-    log.record(
-        "EXECUTION",
-        {
-            "executed": True,
-        },
-    )
-
-    print("Audit log created.")
-    print("Integrity check:", log.verify())
+    print("Audit log integrity:", log.verify())
