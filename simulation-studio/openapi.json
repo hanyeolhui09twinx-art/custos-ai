@@ -1,0 +1,703 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Custos Local Prototype API",
+    "version": "0.2.0-prototype",
+    "summary": "Loopback-only API for the current Custos research prototype.",
+    "description": "This contract documents the repository implementation. It is not a production API guarantee. The execution adapter is a mock and does not call external tools."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8765",
+      "description": "Local API running on the developer's own computer; remote binding is rejected."
+    }
+  ],
+  "tags": [
+    {
+      "name": "Health",
+      "description": "Local process status."
+    },
+    {
+      "name": "Requests",
+      "description": "Submit an action for independent policy evaluation."
+    },
+    {
+      "name": "Approvals",
+      "description": "Review a request that requires human approval and allow the originating agent to execute once."
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Check local API health",
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "description": "The local API is responding.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                },
+                "example": {
+                  "status": "ok",
+                  "service": "custos-api",
+                  "mode": "local-simulation"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/v1/requests": {
+      "post": {
+        "tags": [
+          "Requests"
+        ],
+        "summary": "Submit an action request",
+        "operationId": "submitActionRequest",
+        "security": [
+          {
+            "AgentBearer": []
+          }
+        ],
+        "description": "The agent identity is derived from the configured Bearer token. Do not send agent_id in the request body. The request ID is optional, but clients should reuse it for retries of the same logical operation.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionRequest"
+              },
+              "example": {
+                "action": "read_database",
+                "resource": "research_db",
+                "parameters": {},
+                "request_id": "docs-read-001"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A valid policy decision. BLOCK and HUMAN_APPROVAL are application outcomes, not HTTP errors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionResult"
+                },
+                "examples": {
+                  "allow": {
+                    "summary": "Allowed mock execution",
+                    "value": {
+                      "decision": "ALLOW",
+                      "reason": "Policy checks passed.",
+                      "executed": true,
+                      "result": {
+                        "status": "simulated",
+                        "agent_id": "research_agent",
+                        "action": "read_database",
+                        "resource": "research_db",
+                        "request_id": "docs-read-001"
+                      },
+                      "request_id": "docs-read-001"
+                    }
+                  },
+                  "humanApproval": {
+                    "summary": "Human approval required",
+                    "value": {
+                      "decision": "HUMAN_APPROVAL",
+                      "reason": "This action requires explicit human approval.",
+                      "executed": false,
+                      "approval_id": "00000000-0000-4000-8000-000000000001",
+                      "expires_at": 1790000000,
+                      "request_id": "docs-email-001"
+                    }
+                  },
+                  "block": {
+                    "summary": "Policy blocked",
+                    "value": {
+                      "decision": "BLOCK",
+                      "reason": "Action is not permitted for this agent.",
+                      "executed": false,
+                      "request_id": "docs-block-001"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/v1/approvals": {
+      "get": {
+        "tags": [
+          "Approvals"
+        ],
+        "summary": "List pending approvals",
+        "operationId": "listPendingApprovals",
+        "security": [
+          {
+            "ReviewerBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pending approval records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalListResponse"
+                },
+                "example": {
+                  "approvals": [
+                    {
+                      "approval_id": "00000000-0000-4000-8000-000000000001",
+                      "request": {
+                        "agent_id": "research_agent",
+                        "action": "send_email",
+                        "resource": "company_email",
+                        "parameters": {},
+                        "request_id": "docs-email-001"
+                      },
+                      "created_at": 1780000000,
+                      "expires_at": 1780003600,
+                      "status": "pending"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/v1/approvals/{approval_id}/review": {
+      "post": {
+        "tags": [
+          "Approvals"
+        ],
+        "summary": "Approve or deny an exact request",
+        "operationId": "reviewApproval",
+        "security": [
+          {
+            "ReviewerBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "approval_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Approval identifier returned by POST /v1/requests."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewRequest"
+              },
+              "examples": {
+                "approve": {
+                  "value": {
+                    "decision": "approve"
+                  }
+                },
+                "deny": {
+                  "value": {
+                    "decision": "deny"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The reviewer decision was recorded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewResponse"
+                },
+                "example": {
+                  "approval_id": "00000000-0000-4000-8000-000000000001",
+                  "status": "approved",
+                  "reviewer_id": "configured_reviewer",
+                  "reviewed_at": 1780000100
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/v1/approvals/{approval_id}/execute": {
+      "post": {
+        "tags": [
+          "Approvals"
+        ],
+        "summary": "Execute an approved request once",
+        "operationId": "executeApprovedRequest",
+        "security": [
+          {
+            "AgentBearer": []
+          }
+        ],
+        "description": "Only the original requesting agent may execute the approved request. The current implementation requires a non-empty JSON object body, so send {}. The adapter returns a simulated result.",
+        "parameters": [
+          {
+            "name": "approval_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Approval identifier returned by POST /v1/requests."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "The current handler requires a JSON object body; fields are ignored for this operation."
+              },
+              "example": {}
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The approved request was processed; execution can still be blocked by a dispatch-time policy re-check.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                },
+                "examples": {
+                  "executed": {
+                    "value": {
+                      "decision": "ALLOW",
+                      "reason": "A valid human approval was verified; simulated execution completed.",
+                      "executed": true,
+                      "approval_id": "00000000-0000-4000-8000-000000000001",
+                      "result": {
+                        "status": "simulated",
+                        "agent_id": "research_agent",
+                        "action": "send_email",
+                        "resource": "company_email",
+                        "request_id": "docs-email-001"
+                      }
+                    }
+                  },
+                  "blocked": {
+                    "value": {
+                      "decision": "BLOCK",
+                      "reason": "Current policy blocks this previously approved action.",
+                      "executed": false,
+                      "approval_id": "00000000-0000-4000-8000-000000000001"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "AgentBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "opaque",
+        "description": "A temporary development token mapped to a configured agent ID."
+      },
+      "ReviewerBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "opaque",
+        "description": "A shared local prototype reviewer token. It does not provide individual reviewer identity or MFA."
+      }
+    },
+    "schemas": {
+      "HealthResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "service",
+          "mode"
+        ],
+        "properties": {
+          "status": {
+            "const": "ok"
+          },
+          "service": {
+            "const": "custos-api"
+          },
+          "mode": {
+            "const": "local-simulation"
+          }
+        }
+      },
+      "ActionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "action",
+          "resource"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_.:-]*$"
+          },
+          "resource": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_.:-]*$"
+          },
+          "parameters": {
+            "type": "object",
+            "default": {},
+            "description": "JSON object; maximum 16 KiB after canonicalization. Sensitive credential-like field names are rejected; maximum nesting depth is 64."
+          },
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]*$",
+            "description": "Optional idempotency key. Reuse for exact retries; changed payload with the same key is a conflict."
+          }
+        }
+      },
+      "ActionResult": {
+        "type": "object",
+        "required": [
+          "decision",
+          "reason",
+          "executed"
+        ],
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "ALLOW",
+              "HUMAN_APPROVAL",
+              "BLOCK"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "executed": {
+            "type": "boolean"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "approval_id": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string"
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "replayed": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ApprovalListResponse": {
+        "type": "object",
+        "required": [
+          "approvals"
+        ],
+        "properties": {
+          "approvals": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "approval_id",
+                "request",
+                "created_at",
+                "expires_at",
+                "status"
+              ],
+              "properties": {
+                "approval_id": {
+                  "type": "string"
+                },
+                "request": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "created_at": {
+                  "type": "number"
+                },
+                "expires_at": {
+                  "type": "number"
+                },
+                "status": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "ReviewRequest": {
+        "type": "object",
+        "required": [
+          "decision"
+        ],
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "deny"
+            ]
+          }
+        }
+      },
+      "ReviewResponse": {
+        "type": "object",
+        "required": [
+          "approval_id",
+          "status",
+          "reviewer_id",
+          "reviewed_at"
+        ],
+        "properties": {
+          "approval_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "reviewer_id": {
+            "type": "string"
+          },
+          "reviewed_at": {
+            "type": "number"
+          }
+        }
+      },
+      "ExecutionResult": {
+        "type": "object",
+        "required": [
+          "decision",
+          "reason",
+          "executed",
+          "approval_id"
+        ],
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "ALLOW",
+              "BLOCK"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "executed": {
+            "type": "boolean"
+          },
+          "approval_id": {
+            "type": "string"
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Invalid or missing JSON request body or request validation failure.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Missing or invalid Bearer credential.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Reviewer/request authorization or browser Origin is not permitted.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Unknown route or approval ID.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "Idempotency conflict or invalid approval state.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "Gone": {
+        "description": "Approval expired.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "PayloadTooLarge": {
+        "description": "Request body exceeds 64 KiB.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Unexpected internal gateway, approval, or execution error.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      }
+    }
+  }
+}
