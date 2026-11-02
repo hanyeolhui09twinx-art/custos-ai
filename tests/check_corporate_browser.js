@@ -83,7 +83,7 @@ async function main() {
       );
       for (const href of internalLinks) {
         const target = new URL(href, BASE + route);
-        const checked = await page.request.get(target.toString());
+        const checked = await context.request.get(target.toString());
         if (!checked.ok()) failures.push(route + " internal link " + href + " returned " + checked.status());
       }
 
@@ -105,7 +105,13 @@ async function main() {
     await languagePage.close();
 
     // Check the mobile menu, Escape behavior, focus restoration, and narrow viewport overflow.
-    const mobile = await context.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    const mobileContext = await browser.newContext({
+      viewport: { width: 390, height: 844 },
+      isMobile: true,
+      hasTouch: true,
+      locale: "ko-KR"
+    });
+    const mobile = await mobileContext.newPage();
     const mobileErrors = [];
     mobile.on("pageerror", recordError(mobileErrors, "mobile mission"));
     await mobile.goto(BASE + "/mission.html", { waitUntil: "networkidle" });
@@ -122,7 +128,7 @@ async function main() {
     assert.ok(dimensions.content <= dimensions.viewport + 1, "Mobile page has horizontal overflow: " + JSON.stringify(dimensions));
     await mobile.screenshot({ path: path.join(OUT, "mission-mobile.png"), fullPage: true });
     if (mobileErrors.length) failures.push(...mobileErrors);
-    await mobile.close();
+    await mobileContext.close();
 
     // Reduced-motion users should receive a static first-frame fallback.
     const reduced = await context.newPage();
