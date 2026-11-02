@@ -33,10 +33,10 @@ The site is built as static HTML, CSS, and JavaScript and deployed through GitHu
 
 ### 1. Python policy gateway and local API
 
-- `custos_gateway.py` — deny-by-default policy evaluation, strict request validation, SQLite-backed approval state, request idempotency, dispatch-time policy re-check, and mock execution adapter.
+- `custos_gateway.py` — deny-by-default policy evaluation, strict request validation, SQLite-backed approval state, request idempotency, 15-second request-bound HMAC dispatch permits, adapter-boundary policy re-checks, approval-claim verification, and a mock execution adapter.
 - `custos_api.py` — authenticated local HTTP API. It binds to loopback and allows browser CORS only from the official Custos GitHub Pages origin.
 - `audit_log.py` — local JSONL events linked by a SHA-256 hash chain.
-- `tests/test_custos.py` — policy, approval lifecycle, replay, API authentication, concurrency, CORS, and audit-integrity tests.
+- `tests/test_custos.py` — policy, approval lifecycle, dispatch-permit signature/expiry/replay, adapter-boundary revalidation, API authentication, concurrency, CORS, and audit-integrity tests.
 
 Demonstration policy:
 
@@ -46,7 +46,7 @@ Demonstration policy:
 | `research_agent` | `send_email` | `company_email` | HUMAN_APPROVAL, then mock execution |
 | Any configured agent | `disable_custos`, `modify_custos_policy`, `delete_audit_log` | Any | BLOCK |
 
-Unknown agents, unlisted actions, and out-of-scope resources are denied by default. The mock adapter does not access a real database, send email, or call external tools.
+Unknown agents, unlisted actions, and out-of-scope resources are denied by default. The guarded adapter checks one-time permits and current authorization before calling its delegate. The only configured delegate remains the mock adapter: it does not access a real database, send email, or call external tools. Permit signing and replay tracking are process-local prototype controls, not a production isolation boundary.
 
 ### 2. Browser Simulation Lab
 
@@ -141,3 +141,4 @@ Custos should currently be described as a local research prototype with a mock e
 - [Day 005 — Product experience and explanation](devlog/day-005.md)
 - [Day 006 — Conditional policy flow](devlog/day-006.md)
 - [Day 007 — Simulation Lab reliability](devlog/day-007.md)
+- [Day 008 — Guarded execution boundary](devlog/day-008.md)
