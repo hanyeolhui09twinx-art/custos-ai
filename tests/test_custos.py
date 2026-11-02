@@ -136,6 +136,21 @@ class GatewayTestCase(unittest.TestCase):
             self.gateway.adapter.execute(request, permit)
         self.assertEqual(self.adapter.executed, [])
 
+    def test_adapter_boundary_race_returns_block_without_execution(self) -> None:
+        original_issue = self.gateway._dispatch_authority.issue
+
+        def issue_then_revoke(request, *, mode, approval_id=None):
+            permit = original_issue(request, mode=mode, approval_id=approval_id)
+            self.gateway.policy_engine.policies = {}
+            return permit
+
+        self.gateway._dispatch_authority.issue = issue_then_revoke
+        result = self.gateway.submit(self.request())
+
+        self.assertEqual(result["decision"], Decision.BLOCK.value)
+        self.assertFalse(result["executed"])
+        self.assertEqual(self.adapter.executed, [])
+
     def test_approved_permit_requires_a_live_exact_approval_claim(self) -> None:
         request = self.request("send_email", "company_email")
         fake = self.gateway._dispatch_authority.issue(
