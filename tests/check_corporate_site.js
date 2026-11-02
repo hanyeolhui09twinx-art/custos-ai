@@ -223,7 +223,7 @@ for (const phrase of ["DurableDispatchPermitVerifier", "BEGIN IMMEDIATE", "consu
   if (!providerSource.includes(phrase)) throw new Error("Provider process is missing a required verification control: " + phrase);
 }
 const providerTests = fs.readFileSync(path.join(root, "tests", "test_provider_process.py"), "utf8");
-for (const phrase of ["subprocess.Popen", "test_provider_permit_is_single_use_under_concurrent_replay", "test_provider_replay_record_survives_process_restart", "test_gateway_fails_closed_when_provider_is_unavailable"]) {
+for (const phrase of ["subprocess.Popen", "test_provider_permit_is_single_use_under_concurrent_replay", "test_provider_replay_record_survives_process_restart", "test_human_approved_dispatch_uses_the_separate_provider", "test_gateway_fails_closed_when_provider_is_unavailable"]) {
   if (!providerTests.includes(phrase)) throw new Error("Separate-process integration test is missing: " + phrase);
 }
 const gatewaySource = fs.readFileSync(path.join(root, "custos_gateway.py"), "utf8");
