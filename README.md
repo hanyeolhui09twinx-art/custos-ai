@@ -33,10 +33,10 @@ The site is built as static HTML, CSS, and JavaScript and deployed through GitHu
 
 ### 1. Python policy gateway and local API
 
-- `custos_gateway.py` — deny-by-default policy evaluation, strict request validation, SQLite-backed approval state, request idempotency, 15-second request-bound HMAC dispatch permits, adapter-boundary policy re-checks, approval-claim verification, and a mock execution adapter.
+- `custos_gateway.py` — deny-by-default policy evaluation, strict request validation, SQLite-backed approval state, request idempotency, 15-second request-bound HMAC dispatch permits, adapter-boundary policy re-checks, approval-claim verification, and a mock tool registry restricted to exact Action/Resource pairs.
 - `custos_api.py` — authenticated local HTTP API. It binds to loopback and allows browser CORS only from the official Custos GitHub Pages origin.
 - `audit_log.py` — local JSONL events linked by a SHA-256 hash chain.
-- `tests/test_custos.py` — policy, approval lifecycle, dispatch-permit signature/expiry/replay, adapter-boundary revalidation, API authentication, concurrency, CORS, and audit-integrity tests.
+- `tests/test_custos.py` — policy, approval lifecycle, exact tool-binding checks, dispatch-permit signature/expiry/replay, adapter-boundary revalidation, API authentication, concurrency, CORS, and audit-integrity tests.
 
 Demonstration policy:
 
