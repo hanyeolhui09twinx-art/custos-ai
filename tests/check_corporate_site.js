@@ -39,6 +39,9 @@ for (const file of allPages) {
       if (!/aria-controls="mobile-navigation"/.test(html) || !/id="mobile-navigation"/.test(html)) {
         throw new Error(file + ": mobile menu button and navigation are not programmatically connected");
       }
+      if (!html.includes('data-ko="플랫폼"') || !html.includes('data-en="Platform"')) {
+        throw new Error(file + ": mobile navigation's primary links must be bilingual.");
+      }
       if (!/rel="canonical"/.test(html)) throw new Error(file + ": missing canonical URL");
     }
     if (file !== "404.html") {
