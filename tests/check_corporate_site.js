@@ -174,11 +174,11 @@ if (!home.includes('href="./developers.html"') || !home.includes("Developer quic
   throw new Error("Platform page must show its prototype status and decision-card UI.");
 }
 const technology = fs.readFileSync(path.join(site, "technology.html"), "utf8");
-for (const phrase of ["DISPATCH PERMIT / RE-CHECK", "GUARDED MOCK ADAPTER", "Dispatch permit boundary", "15-second HMAC request-bound permit", "Production execution adapter"]) {
+for (const phrase of ["DISPATCH PERMIT / RE-CHECK", "GUARDED MOCK ADAPTER", "Dispatch permit boundary", "15-second HMAC request-bound permit", "Exact tool binding", "explicitly registered Action/Resource pairs", "Production execution adapter"]) {
   if (!technology.includes(phrase)) throw new Error("Technology page is missing the guarded adapter boundary description: " + phrase);
 }
 const threatModel = fs.readFileSync(path.join(root, "docs", "THREAT_MODEL.md"), "utf8");
-for (const phrase of ["Dispatch capability lifecycle", "HMAC-signed permit", "in process memory", "not a production key-management", "direct agent-to-tool bypass"]) {
+for (const phrase of ["Dispatch capability lifecycle", "HMAC-signed permit", "in process memory", "not a production key-management", "direct agent-to-tool bypass", "same trusted Python process", "unregistered mock tool pairs"]) {
   if (!threatModel.includes(phrase)) throw new Error("Threat model is missing the adapter-boundary limitation: " + phrase);
 }
 const developerDocs = fs.readFileSync(path.join(site, "developers.html"), "utf8");
