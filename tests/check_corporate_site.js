@@ -22,6 +22,9 @@ for (const file of allPages) {
   const html = fs.readFileSync(path.join(site, file), "utf8");
   if (!/<title>[^<]+<\/title>/i.test(html)) throw new Error(file + ": missing title");
   if (!/name="description"/i.test(html)) throw new Error(file + ": missing meta description");
+  if (file !== "404.html" && (!/rel="canonical"/.test(html) || !/rel="icon"/.test(html))) {
+    throw new Error(file + ": missing canonical URL or branded favicon");
+  }
 
   if (corporatePages.includes(file)) {
     if (!/href="\.\/corporate\.css"/.test(html)) throw new Error(file + ": missing shared stylesheet");
@@ -99,8 +102,10 @@ for (const page of ["platform.html", "technology.html", "security.html", "resear
 console.log("Custos website validation passed: corporate pages, standalone tools, local links, bilingual controls, threat model, sitemap, and demo behavior.");
 
 const lab = fs.readFileSync(path.join(site, "lab.html"), "utf8");
+if (!lab.includes("img-src 'self' data:")) throw new Error("Lab CSP must permit its same-origin brand icon.");
 if (!lab.includes('href="./index.html"')) throw new Error("Lab is missing a return link to the corporate website.");
 const localConsole = fs.readFileSync(path.join(site, "local-console.html"), "utf8");
+if (!localConsole.includes("img-src 'self'")) throw new Error("Local Control Room CSP must permit its same-origin brand icon.");
 if (!localConsole.includes('href="./lab.html"') || !localConsole.includes('href="./index.html"')) {
   throw new Error("Local Control Room must link back to both the Lab and corporate website.");
 }
