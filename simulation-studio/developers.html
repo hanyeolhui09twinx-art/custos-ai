@@ -98,7 +98,9 @@ Invoke-RestMethod -Method Post `
 # Execute once as the original requesting Agent
 Invoke-RestMethod -Method Post `
   -Uri "http://127.0.0.1:8765/v1/approvals/$approvalId/execute" `
-  -Headers @{ Authorization = "Bearer $agentToken" }</code></pre></div>
+  -Headers @{ Authorization = "Bearer $agentToken" } `
+  -ContentType "application/json" `
+  -Body "{}"</code></pre></div>
 <p class="form-note" data-ko="승인 단계는 요청 스냅샷과 연결됩니다. Reviewer는 승인 또는 거부할 수 있으며, 실행은 원래 요청한 Agent 토큰으로 한 번만 시도할 수 있습니다. 실제 실행 결과는 mock adapter의 시뮬레이션 응답입니다." data-en="The approval is bound to the request snapshot. A reviewer can approve or deny it, and execution can be attempted once using the original requesting Agent token. The execution result is a simulation response from the mock adapter.">승인 단계는 요청 스냅샷과 연결됩니다. Reviewer는 승인 또는 거부할 수 있으며, 실행은 원래 요청한 Agent 토큰으로 한 번만 시도할 수 있습니다. 실제 실행 결과는 mock adapter의 시뮬레이션 응답입니다.</p>
 <div class="table-wrap"><table><thead><tr><th>METHOD</th><th>PATH</th><th>AUTH</th><th>DESCRIPTION</th></tr></thead><tbody>
 <tr><td>GET</td><td><code>/health</code></td><td>None</td><td data-ko="로컬 서버 상태" data-en="Local service health">로컬 서버 상태</td></tr>
