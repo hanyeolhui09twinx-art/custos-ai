@@ -69,25 +69,53 @@ def create_server(
     if gateway is None:
         adapter = None
         dispatch_signing_key = None
+        dispatch_signing_keys = None
+        active_dispatch_key_id = os.environ.get("CUSTOS_ACTIVE_DISPATCH_KEY_ID", "default")
         provider_url = os.environ.get("CUSTOS_TOOL_PROVIDER_URL", "")
         if provider_url:
-            key_hex = os.environ.get("CUSTOS_DISPATCH_SIGNING_KEY", "")
-            try:
-                dispatch_signing_key = bytes.fromhex(key_hex)
-            except ValueError as exc:
-                raise ValueError("CUSTOS_DISPATCH_SIGNING_KEY must be hexadecimal.") from exc
-            if len(dispatch_signing_key) < 32:
-                raise ValueError("CUSTOS_DISPATCH_SIGNING_KEY must encode at least 32 bytes.")
+            raw_key_ring = os.environ.get("CUSTOS_DISPATCH_KEYS", "")
+            if raw_key_ring:
+                try:
+                    encoded_keys = json.loads(raw_key_ring)
+                except json.JSONDecodeError as exc:
+                    raise ValueError("CUSTOS_DISPATCH_KEYS must be a JSON object.") from exc
+                if not isinstance(encoded_keys, dict) or not encoded_keys:
+                    raise ValueError("CUSTOS_DISPATCH_KEYS must be a non-empty JSON object.")
+                dispatch_signing_keys = {}
+                for key_id, key_hex in encoded_keys.items():
+                    if not isinstance(key_id, str) or not key_id or not isinstance(key_hex, str):
+                        raise ValueError("CUSTOS_DISPATCH_KEYS contains an invalid entry.")
+                    try:
+                        key_value = bytes.fromhex(key_hex)
+                    except ValueError as exc:
+                        raise ValueError(f"Dispatch key {key_id!r} must be hexadecimal.") from exc
+                    if len(key_value) < 32:
+                        raise ValueError(f"Dispatch key {key_id!r} must encode at least 32 bytes.")
+                    dispatch_signing_keys[key_id] = key_value
+                if active_dispatch_key_id not in dispatch_signing_keys:
+                    raise ValueError("CUSTOS_ACTIVE_DISPATCH_KEY_ID must exist in CUSTOS_DISPATCH_KEYS.")
+            else:
+                key_hex = os.environ.get("CUSTOS_DISPATCH_SIGNING_KEY", "")
+                try:
+                    dispatch_signing_key = bytes.fromhex(key_hex)
+                except ValueError as exc:
+                    raise ValueError("CUSTOS_DISPATCH_SIGNING_KEY must be hexadecimal.") from exc
+                if len(dispatch_signing_key) < 32:
+                    raise ValueError("CUSTOS_DISPATCH_SIGNING_KEY must encode at least 32 bytes.")
             from custos_provider import HttpToolProviderAdapter
             adapter = HttpToolProviderAdapter(
                 provider_url,
                 receipt_signing_key=dispatch_signing_key,
+                receipt_signing_keys=dispatch_signing_keys,
+                receipt_signing_key_id=active_dispatch_key_id,
             )
         gateway = CustosGateway(
             store=ApprovalStore(db_path),
             audit_log=AuditLog(str(audit_path)),
             adapter=adapter,
             dispatch_signing_key=dispatch_signing_key,
+            dispatch_signing_keys=dispatch_signing_keys,
+            active_dispatch_key_id=active_dispatch_key_id,
         )
 
     class Handler(BaseHTTPRequestHandler):
