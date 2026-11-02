@@ -1,6 +1,7 @@
 (function(){
 "use strict";
 var root=document.documentElement;
+root.classList.add("js-motion");
 var language="ko";
 function syncMenuLabel(){
  var button=document.querySelector("[data-menu-toggle]");
