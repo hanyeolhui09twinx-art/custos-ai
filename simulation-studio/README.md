@@ -72,3 +72,8 @@ The Contact page links to structured GitHub issue forms for:
 Public issues must not contain credentials, customer data, or confidential information.
 
 See the root README for API routes and docs/THREAT_MODEL.md for assumptions, blind spots, counterarguments, edge cases, and self-critique.
+
+
+## Contribution guide
+
+See the repository root's CONTRIBUTING.md for local setup, engineering standards, test commands, and security expectations. Pull requests use .github/PULL_REQUEST_TEMPLATE.md.
