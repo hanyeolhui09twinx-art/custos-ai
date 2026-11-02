@@ -48,13 +48,37 @@ async function checkResponsiveLayout(page, route, failures) {
   for (const width of RESPONSIVE_WIDTHS) {
     await page.setViewportSize({ width, height: 900 });
     await page.waitForTimeout(25);
-    const metrics = await page.evaluate(() => ({
-      viewport: document.documentElement.clientWidth,
-      document: document.documentElement.scrollWidth,
-      body: document.body.scrollWidth,
-      desktopNavVisible: getComputedStyle(document.querySelector(".nav")).display !== "none",
-      menuToggleVisible: getComputedStyle(document.querySelector("[data-menu-toggle]")).display !== "none"
-    }));
+    const metrics = await page.evaluate(() => {
+      const viewport = document.documentElement.clientWidth;
+      const overflowCandidates = [...document.querySelectorAll("body *")]
+        .map((element) => {
+          const rect = element.getBoundingClientRect();
+          const style = getComputedStyle(element);
+          return {
+            tag: element.tagName.toLowerCase(),
+            id: element.id,
+            className: typeof element.className === "string" ? element.className.slice(0, 70) : "",
+            left: Math.round(rect.left),
+            right: Math.round(rect.right),
+            width: Math.round(rect.width),
+            scrollWidth: element.scrollWidth,
+            clientWidth: element.clientWidth,
+            position: style.position,
+            overflowX: style.overflowX
+          };
+        })
+        .filter((item) => item.width > 0 && (item.right > viewport + 1 || item.left < -1))
+        .sort((a, b) => b.right - a.right)
+        .slice(0, 8);
+      return {
+        viewport,
+        document: document.documentElement.scrollWidth,
+        body: document.body.scrollWidth,
+        desktopNavVisible: getComputedStyle(document.querySelector(".nav")).display !== "none",
+        menuToggleVisible: getComputedStyle(document.querySelector("[data-menu-toggle]")).display !== "none",
+        overflowCandidates
+      };
+    });
 
     if (metrics.document > metrics.viewport + 1 || metrics.body > metrics.viewport + 1) {
       failures.push(
