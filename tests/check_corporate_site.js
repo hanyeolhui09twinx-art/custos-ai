@@ -355,7 +355,7 @@ if (!localConsole.includes('href="./index.html"')) throw new Error("Local Contro
 if (!localConsole.includes('href="./lab.html"') || !localConsole.includes('href="./index.html"')) {
   throw new Error("Local Control Room must link back to both the Lab and corporate website.");
 }
-for (const phrase of ["EXECUTION_UNKNOWN", "executed=null", "same request ID", "setRequestLocked", "result.uncertain"]) {
+for (const phrase of ["EXECUTION_UNKNOWN", "executed=null", "same request ID", "setRequestLocked", 'classList.add("uncertain")']) {
   if (!localConsole.includes(phrase)) throw new Error("Local Control Room is missing unknown-outcome UX: " + phrase);
 }
 
