@@ -279,14 +279,14 @@ for (const phrase of ["/v1/security/overview", "reviewerToken", "componentFilter
 if (/localStorage|innerHTML/.test(securityOps)) {
   throw new Error("Security Operations must not persist credentials or inject audit data as HTML.");
 }
-const inlineScripts = [...securityOps.matchAll(/<script>([\\s\\S]*?)<\\/script>/g)];
+const inlineScripts = [...securityOps.matchAll(/<script>([\s\S]*?)<\/script>/g)];
 if (!inlineScripts.length) throw new Error("Security Operations must provide its local API client.");
 for (const script of inlineScripts) new vm.Script(script[1], {filename: "security-ops.inline.js"});
 const securityPath = openApi.paths["/v1/security/overview"].get;
 if (!securityPath.security || !securityPath.security.some(item => item.ReviewerBearer)) {
   throw new Error("Security observability route must require reviewer authentication.");
 }
-if (!securityPath.description.includes("never returns key bytes") || !securityPath.description.includes("read-only")) {
+if (!securityPath.description.includes("never returns raw key material") || !securityPath.description.includes("read-only")) {
   throw new Error("Security observability contract must disclose its sanitized read-only boundary.");
 }
 const sitemap = fs.readFileSync(path.join(site, "sitemap.xml"), "utf8");
