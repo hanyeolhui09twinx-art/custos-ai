@@ -12,7 +12,10 @@ It contains dedicated pages for:
 - Technology — identity, scope, policy, dispatch revalidation, and implementation status
 - Security & Trust — implemented controls, limitations, and the five-lens threat model
 - Research — research questions, roadmap, and engineering records
-- About — project purpose and current prototype status
+- About — company identity, purpose, product, and current prototype status
+- Customer Engagement — contract-led B2B/B2G engagement model and delivery stages
+- Enterprise Engagement — enterprise workflow scope, customer responsibilities, and acceptance criteria
+- Public Sector Engagement — bounded public workflows, human accountability, records, and procurement considerations
 - Contact — structured bug reports and research/collaboration proposals
 - Privacy — data handling for the static site and browser tools
 - Terms of Use — usage boundaries and prototype limitations
