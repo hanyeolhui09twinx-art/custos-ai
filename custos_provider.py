@@ -9,7 +9,7 @@ import os
 import re
 import sqlite3
 import time
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
@@ -308,13 +308,492 @@ class ExecutionReceiptStore:
         return result
 
 
+SUPPORTED_JSON_SCHEMA_KEYWORDS = frozenset({
+    "$schema", "title", "description", "type", "required", "additionalProperties",
+    "properties", "minLength", "maxLength", "pattern", "format", "minimum",
+    "maximum", "minItems", "maxItems", "items", "const",
+})
+SUPPORTED_JSON_SCHEMA_TYPES = frozenset({"object", "string", "integer", "array"})
+
+
+def validate_schema_definition(schema: Any, path: str = "$schema", *, root: bool = False) -> None:
+    """Fail closed on schema keywords or shapes the local runtime does not implement."""
+    if not isinstance(schema, dict):
+        raise TypeError(f"{path} definition must be an object.")
+
+    unsupported = set(schema) - SUPPORTED_JSON_SCHEMA_KEYWORDS
+    if unsupported:
+        names = ", ".join(sorted(unsupported))
+        raise ValueError(f"{path} contains unsupported JSON Schema keyword(s): {names}.")
+
+    if root and schema.get("$schema") != ProviderToolRegistry.SCHEMA_DIALECT:
+        raise ValueError(f"{path} must declare JSON Schema Draft 2020-12.")
+
+    for metadata in ("$schema", "title", "description"):
+        if metadata in schema and not isinstance(schema[metadata], str):
+            raise TypeError(f"{path}.{metadata} must be a string.")
+
+    expected_type = schema.get("type")
+    if expected_type is not None and expected_type not in SUPPORTED_JSON_SCHEMA_TYPES:
+        raise ValueError(f"{path} uses unsupported JSON Schema type: {expected_type}.")
+
+    if expected_type is None and "const" not in schema:
+        raise ValueError(f"{path} must declare a supported type or a constant.")
+
+    if expected_type == "object":
+        properties = schema.get("properties", {})
+        required = schema.get("required", [])
+        if not isinstance(properties, dict):
+            raise TypeError(f"{path}.properties must be an object.")
+        if (
+            not isinstance(required, list)
+            or not all(isinstance(item, str) for item in required)
+            or len(required) != len(set(required))
+        ):
+            raise TypeError(f"{path}.required must be a unique list of strings.")
+        if not set(required).issubset(properties):
+            raise ValueError(f"{path}.required contains a field absent from properties.")
+
+        additional = schema.get("additionalProperties", True)
+        if not isinstance(additional, (bool, dict)):
+            raise TypeError(f"{path}.additionalProperties must be a boolean or a schema.")
+        if isinstance(additional, dict):
+            validate_schema_definition(additional, f"{path}.additionalProperties")
+
+        for key, child in properties.items():
+            if not isinstance(key, str):
+                raise TypeError(f"{path}.properties keys must be strings.")
+            validate_schema_definition(child, f"{path}.properties.{key}")
+
+    elif expected_type == "string":
+        for bound in ("minLength", "maxLength"):
+            if bound in schema and (
+                isinstance(schema[bound], bool)
+                or not isinstance(schema[bound], int)
+                or schema[bound] < 0
+            ):
+                raise TypeError(f"{path}.{bound} must be a non-negative integer.")
+        if schema.get("minLength", 0) > schema.get("maxLength", float("inf")):
+            raise ValueError(f"{path} has inconsistent string length bounds.")
+        if "pattern" in schema:
+            if not isinstance(schema["pattern"], str):
+                raise TypeError(f"{path}.pattern must be a string.")
+            try:
+                re.compile(schema["pattern"])
+            except re.error as exc:
+                raise ValueError(f"{path}.pattern is not a valid regular expression.") from exc
+        if "format" in schema and schema["format"] != "email":
+            raise ValueError(f"{path} uses unsupported JSON Schema format: {schema['format']}.")
+
+    elif expected_type == "integer":
+        for bound in ("minimum", "maximum"):
+            if bound in schema and (
+                isinstance(schema[bound], bool)
+                or not isinstance(schema[bound], (int, float))
+                or not math.isfinite(schema[bound])
+            ):
+                raise TypeError(f"{path}.{bound} must be a finite number.")
+        if schema.get("minimum", float("-inf")) > schema.get("maximum", float("inf")):
+            raise ValueError(f"{path} has inconsistent integer bounds.")
+
+    elif expected_type == "array":
+        for bound in ("minItems", "maxItems"):
+            if bound in schema and (
+                isinstance(schema[bound], bool)
+                or not isinstance(schema[bound], int)
+                or schema[bound] < 0
+            ):
+                raise TypeError(f"{path}.{bound} must be a non-negative integer.")
+        if schema.get("minItems", 0) > schema.get("maxItems", float("inf")):
+            raise ValueError(f"{path} has inconsistent array bounds.")
+        if not isinstance(schema.get("items"), dict):
+            raise TypeError(f"{path}.items must define an object schema.")
+        validate_schema_definition(schema["items"], f"{path}.items")
+
+
+def validate_json_schema(value: Any, schema: dict[str, Any], path: str = "$") -> None:
+    """Validate the deliberately small JSON Schema subset used by Provider contracts."""
+    validate_schema_definition(schema, path, root=path == "$")
+
+    expected_type = schema.get("type")
+    if expected_type == "object":
+        if not isinstance(value, dict):
+            raise ValueError(f"{path} must be an object.")
+        required = schema.get("required", [])
+        if not isinstance(required, list) or not all(isinstance(item, str) for item in required):
+            raise TypeError("JSON Schema required must be a list of strings.")
+        missing = set(required) - set(value)
+        if missing:
+            raise ValueError(f"{path} is missing required fields.")
+        properties = schema.get("properties", {})
+        if not isinstance(properties, dict):
+            raise TypeError("JSON Schema properties must be an object.")
+        if schema.get("additionalProperties") is False:
+            extra = set(value) - set(properties)
+            if extra:
+                raise ValueError(f"{path} contains unregistered fields.")
+        for key, item in value.items():
+            if key in properties:
+                validate_json_schema(item, properties[key], f"{path}.{key}")
+            elif isinstance(schema.get("additionalProperties"), dict):
+                validate_json_schema(item, schema["additionalProperties"], f"{path}.{key}")
+    elif expected_type == "string":
+        if not isinstance(value, str):
+            raise ValueError(f"{path} must be a string.")
+        if len(value) < schema.get("minLength", 0):
+            raise ValueError(f"{path} is shorter than the minimum length.")
+        if len(value) > schema.get("maxLength", float("inf")):
+            raise ValueError(f"{path} exceeds the maximum length.")
+        pattern = schema.get("pattern")
+        if pattern is not None and re.search(pattern, value) is None:
+            raise ValueError(f"{path} does not match its required pattern.")
+        if schema.get("format") == "email" and not re.fullmatch(r"[^@\s]+@[^@\s]+", value):
+            raise ValueError(f"{path} must use the email format.")
+    elif expected_type == "integer":
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError(f"{path} must be an integer.")
+        if value < schema.get("minimum", float("-inf")) or value > schema.get("maximum", float("inf")):
+            raise ValueError(f"{path} is outside the allowed integer range.")
+    elif expected_type == "array":
+        if not isinstance(value, list):
+            raise ValueError(f"{path} must be an array.")
+        if len(value) < schema.get("minItems", 0) or len(value) > schema.get("maxItems", float("inf")):
+            raise ValueError(f"{path} has an invalid number of items.")
+        item_schema = schema.get("items")
+        if not isinstance(item_schema, dict):
+            raise TypeError("JSON Schema array items must define an object schema.")
+        for index, item in enumerate(value):
+            validate_json_schema(item, item_schema, f"{path}[{index}]")
+    elif expected_type is not None:
+        raise ValueError(f"Unsupported JSON Schema type: {expected_type}")
+
+    if "const" in schema and value != schema["const"]:
+        raise ValueError(f"{path} does not match its required constant.")
+
+
+@dataclass(frozen=True)
+class ProviderToolContract:
+    """Versioned input/output contract whose JSON Schema is the source of truth."""
+
+    version: str
+    required_mode: str
+    input_kind: str
+    input_schema: dict[str, Any]
+    output_schema: dict[str, Any]
+
+    @property
+    def result_status(self) -> str:
+        status_schema = self.output_schema.get("properties", {}).get("status", {})
+        status = status_schema.get("const")
+        if not isinstance(status, str):
+            raise ValueError("Provider output schema must declare a constant status.")
+        return status
+
+    @property
+    def parameter_fields(self) -> frozenset[str]:
+        properties = self.input_schema.get("properties", {})
+        if not isinstance(properties, dict):
+            raise ValueError("Provider input schema must define object properties.")
+        return frozenset(properties)
+
+    def validate_parameters(self, parameters: Any, research_fixture: "ReadOnlyResearchFixture") -> None:
+        validate_json_schema(parameters, self.input_schema, "$.parameters")
+        if self.input_kind == "research_query_v1":
+            research_fixture.validate_parameters(parameters)
+        elif self.input_kind != "email_request_v1":
+            raise ValueError("Provider tool contract input kind is not supported.")
+
+    def validate_result(self, request: ActionRequest, result: Any) -> dict[str, Any]:
+        validate_json_schema(result, self.output_schema, "$.result")
+        common = {
+            "agent_id": request.agent_id,
+            "action": request.action,
+            "resource": request.resource,
+            "request_id": request.request_id,
+            "contract_version": self.version,
+            "status": self.result_status,
+        }
+        for key, expected in common.items():
+            if result.get(key) != expected:
+                raise TypeError("Provider tool result does not match its registered contract.")
+        if self.input_kind == "research_query_v1":
+            if (
+                result.get("query") != request.parameters["query"].strip()
+                or result.get("row_count") != len(result.get("records", []))
+            ):
+                raise TypeError("Research result values do not match the registered contract.")
+        return result
+
+    def to_document(
+        self,
+        agent_id: str,
+        action: str,
+        resource: str,
+    ) -> dict[str, Any]:
+        return {
+            "agent_id": agent_id,
+            "action": action,
+            "resource": resource,
+            "contract_version": self.version,
+            "required_permit_mode": self.required_mode,
+            "input_kind": self.input_kind,
+            "input_schema": self.input_schema,
+            "output_schema": self.output_schema,
+        }
+
+
+class ProviderToolRegistry:
+    """Provider-side deny-by-default registry loaded from the published schema catalog."""
+
+    SCHEMA_DIALECT = "https://json-schema.org/draft/2020-12/schema"
+    CATALOG_RELATIVE_PATH = Path("contracts") / "provider-tool-contracts.v1.0.0.json"
+
+    def __init__(
+        self,
+        bindings: dict[tuple[str, str, str], ProviderToolContract] | None = None,
+        catalog_path: str | Path | None = None,
+    ) -> None:
+        if bindings is None:
+            path = Path(catalog_path) if catalog_path is not None else Path(__file__).resolve().parent / self.CATALOG_RELATIVE_PATH
+            document = json.loads(path.read_text(encoding="utf-8"))
+            if (
+                not isinstance(document, dict)
+                or set(document) != {"catalog_version", "schema_dialect", "contracts"}
+                or document.get("schema_dialect") != self.SCHEMA_DIALECT
+                or not isinstance(document.get("contracts"), list)
+            ):
+                raise ValueError("Provider contract catalog metadata is invalid.")
+            if not re.fullmatch(r"\d+\.\d+\.\d+", document["catalog_version"]):
+                raise ValueError("Provider catalog version must use semantic version notation.")
+            configured: dict[tuple[str, str, str], ProviderToolContract] = {}
+            for entry in document["contracts"]:
+                expected_fields = {
+                    "agent_id", "action", "resource", "contract_version",
+                    "required_permit_mode", "input_kind", "input_schema", "output_schema",
+                }
+                if not isinstance(entry, dict) or set(entry) != expected_fields:
+                    raise ValueError("Provider contract catalog entry has an invalid shape.")
+                binding = (entry["agent_id"], entry["action"], entry["resource"])
+                if binding in configured:
+                    raise ValueError("Provider contract catalog contains a duplicate binding.")
+                configured[binding] = ProviderToolContract(
+                    version=entry["contract_version"],
+                    required_mode=entry["required_permit_mode"],
+                    input_kind=entry["input_kind"],
+                    input_schema=entry["input_schema"],
+                    output_schema=entry["output_schema"],
+                )
+            self.catalog_version = document["catalog_version"]
+            self.schema_dialect = document["schema_dialect"]
+        else:
+            configured = bindings
+            self.catalog_version = "1.0.0"
+            self.schema_dialect = self.SCHEMA_DIALECT
+
+        if not isinstance(configured, dict) or not configured:
+            raise ValueError("Provider tool contracts must be a non-empty mapping.")
+        self._bindings: dict[tuple[str, str, str], ProviderToolContract] = {}
+        for binding, contract in configured.items():
+            if (
+                not isinstance(binding, tuple)
+                or len(binding) != 3
+                or not all(isinstance(part, str) and IDENTIFIER_RE.fullmatch(part) for part in binding)
+            ):
+                raise ValueError("Provider contracts must bind exact (agent, action, resource) identifier triples.")
+            if not isinstance(contract, ProviderToolContract):
+                raise ValueError("Every Provider binding must contain a versioned tool contract.")
+            if contract.required_mode not in {"ALLOW", "APPROVED"}:
+                raise ValueError("Provider contracts must require ALLOW or APPROVED permits.")
+            if not re.fullmatch(r"\d+\.\d+\.\d+", contract.version):
+                raise ValueError("Provider contract versions must use semantic version notation.")
+            if not isinstance(contract.input_schema, dict) or not isinstance(contract.output_schema, dict):
+                raise ValueError("Provider contracts must contain input and output JSON Schemas.")
+            if contract.input_schema.get("type") != "object" or contract.output_schema.get("type") != "object":
+                raise ValueError("Provider tool input and output schemas must be JSON objects.")
+            validate_schema_definition(contract.input_schema, "$.input_schema", root=True)
+            validate_schema_definition(contract.output_schema, "$.output_schema", root=True)
+            self._bindings[binding] = contract
+
+        self._catalog_document = {
+            "catalog_version": self.catalog_version,
+            "schema_dialect": self.schema_dialect,
+            "contracts": [
+                contract.to_document(*binding)
+                for binding, contract in sorted(self._bindings.items())
+            ],
+        }
+
+    def to_catalog_document(self) -> dict[str, Any]:
+        return json.loads(json.dumps(self._catalog_document, ensure_ascii=False))
+
+    def contract_for(self, request: ActionRequest) -> ProviderToolContract:
+        binding = (request.agent_id, request.action, request.resource)
+        contract = self._bindings.get(binding)
+        if contract is None:
+            raise DispatchAuthorizationError(
+                "No Provider tool contract exists for this agent/action/resource tuple."
+            )
+        return contract
+
+    def required_mode(self, request: ActionRequest) -> str:
+        return self.contract_for(request).required_mode
+
+    def authorize(self, request: ActionRequest, permit: DispatchPermit) -> None:
+        contract = self.contract_for(request)
+        if permit.mode != contract.required_mode:
+            raise DispatchAuthorizationError(
+                "The signed permit mode does not satisfy the Provider tool contract."
+            )
+
+class ReadOnlyResearchFixture:
+    """Small synthetic SQLite dataset: initialized locally, queried read-only at runtime."""
+
+    _SEED_ROWS = (
+        (
+            "market-001",
+            "Current market research: AI adoption patterns",
+            "Synthetic fixture record. Research note on enterprise AI market adoption, bounded permissions, and human decision review.",
+            "synthetic-fixture",
+        ),
+        (
+            "agency-001",
+            "Human agency and AI authorization",
+            "Synthetic fixture record. Research note on human review, delegated authority, and intervention boundaries.",
+            "synthetic-fixture",
+        ),
+        (
+            "registry-001",
+            "Provider tool registry validation",
+            "Synthetic fixture record. Research note on exact tool bindings, signed permissions, and replay protection.",
+            "synthetic-fixture",
+        ),
+    )
+
+    def __init__(self, db_path: str | Path) -> None:
+        self.db_path = Path(db_path)
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._initialize_fixture()
+
+    def _initialize_fixture(self) -> None:
+        # Creates a clearly synthetic local fixture. Runtime queries never use
+        # this writable setup connection.
+        with sqlite3.connect(self.db_path, timeout=5) as connection:
+            connection.execute(
+                """CREATE TABLE IF NOT EXISTS research_records (
+                    id TEXT PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    source TEXT NOT NULL
+                )"""
+            )
+            connection.executemany(
+                "INSERT OR IGNORE INTO research_records (id, title, content, source) VALUES (?, ?, ?, ?)",
+                self._SEED_ROWS,
+            )
+            connection.commit()
+
+    def _connect_readonly(self) -> sqlite3.Connection:
+        uri = self.db_path.resolve().as_uri() + "?mode=ro"
+        connection = sqlite3.connect(uri, uri=True, timeout=5)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA query_only=ON")
+        return connection
+
+    @staticmethod
+    def _validated_query(parameters: Any) -> tuple[str, list[str]]:
+        if not isinstance(parameters, dict) or set(parameters) != {"query"}:
+            raise ValueError("Research fixture accepts only one query parameter.")
+        query = parameters.get("query")
+        if not isinstance(query, str):
+            raise ValueError("Research query must be text.")
+        query = query.strip()
+        if not query or len(query) > 160:
+            raise ValueError("Research query must contain 1 to 160 characters.")
+        tokens = list(dict.fromkeys(re.findall(r"[a-z]{2,32}|[가-힣]{2,16}", query.casefold())))
+        if not tokens or len(tokens) > 8:
+            raise ValueError("Research query must contain 1 to 8 searchable terms.")
+        return query, tokens
+
+    def validate_parameters(self, parameters: Any) -> None:
+        self._validated_query(parameters)
+
+    def search(self, parameters: Any) -> dict[str, Any]:
+        # SQL structure is constant apart from the number of placeholders;
+        # untrusted query text is always supplied as bound values.
+        query, tokens = self._validated_query(parameters)
+        clauses = ["lower(title || ' ' || content) LIKE ?" for _ in tokens]
+        statement = (
+            "SELECT id, title, content, source FROM research_records "
+            "WHERE " + " AND ".join(clauses) + " ORDER BY id LIMIT 5"
+        )
+        connection = self._connect_readonly()
+        try:
+            rows = connection.execute(statement, [f"%{token}%" for token in tokens]).fetchall()
+        finally:
+            connection.close()
+
+        records = []
+        for row in rows:
+            record = dict(row)
+            # Enforce whole-token matching after the bounded SQL pre-filter.
+            # This avoids substring surprises such as "or" matching "record".
+            text_tokens = set(
+                re.findall(r"[a-z]{2,32}|[가-힣]{2,16}", (record["title"] + " " + record["content"]).casefold())
+            )
+            if all(token in text_tokens for token in tokens):
+                records.append(record)
+        return {
+            "status": "read_only",
+            "storage": "local_synthetic_sqlite_fixture",
+            "resource": "research_db",
+            "query": query,
+            "row_count": len(records),
+            "records": records,
+        }
+
+
+class ProviderExecutionAdapter:
+    """Exact provider-side adapter split: fixture reads and mock-only email."""
+
+    def __init__(self, research_fixture_db_path: str | Path) -> None:
+        self.research_fixture = ReadOnlyResearchFixture(research_fixture_db_path)
+        self.mock_adapter = MockExecutionAdapter()
+
+    def validate(self, request: ActionRequest, contract: ProviderToolContract) -> None:
+        contract.validate_parameters(request.parameters, self.research_fixture)
+
+    def execute(self, request: ActionRequest, contract: ProviderToolContract) -> dict[str, Any]:
+        binding = (request.action, request.resource)
+        if binding == ("read_database", "research_db"):
+            result = self.research_fixture.search(request.parameters)
+        elif binding == ("send_email", "company_email"):
+            result = self.mock_adapter.execute(request)
+        else:
+            raise DispatchAuthorizationError("No Provider execution adapter exists for this action/resource pair.")
+
+        result.update({
+            "agent_id": request.agent_id,
+            "action": request.action,
+            "resource": request.resource,
+            "request_id": request.request_id,
+            "contract_version": contract.version,
+        })
+        return contract.validate_result(request, result)
+
+
 class ToolProviderService:
     """The provider owns its tool registry; the calling agent receives no tool client."""
 
-    def __init__(self, verifier: DurableDispatchPermitVerifier) -> None:
+    def __init__(
+        self,
+        verifier: DurableDispatchPermitVerifier,
+        research_fixture_db_path: str | Path | None = None,
+    ) -> None:
         self.verifier = verifier
         self.receipts = ExecutionReceiptStore(verifier.db_path)
-        self.adapter = MockExecutionAdapter()
+        self.registry = ProviderToolRegistry()
+        fixture_path = research_fixture_db_path or Path(verifier.db_path).with_name("research-fixture.sqlite3")
+        self.adapter = ProviderExecutionAdapter(fixture_path)
 
     def get_receipt(self, agent_id: str, request_id: str) -> dict[str, Any] | None:
         return self.receipts.get(agent_id, request_id)
@@ -334,10 +813,19 @@ class ToolProviderService:
             "action": data["action"], "resource": data["resource"],
             "parameters": data["parameters"], "request_id": data["request_id"],
         })
-        self.verifier.consume(request, payload["permit"])
-        # The durable receipt is claimed before the tool is invoked. An interrupted
-        # execution is never replayed automatically.
-        return self.receipts.execute_once(request, self.adapter.execute)
+        # Resolve the versioned tool contract and validate its exact input schema
+        # before consuming a signed permit or claiming an execution receipt.
+        contract = self.registry.contract_for(request)
+        self.adapter.validate(request, contract)
+        permit = self.verifier.consume(request, payload["permit"])
+        self.registry.authorize(request, permit)
+
+        def execute_with_contract(candidate: ActionRequest) -> dict[str, Any]:
+            return self.adapter.execute(candidate, contract)
+
+        # The durable receipt stores only a result that passed the same versioned
+        # output contract. An interrupted execution is never replayed automatically.
+        return self.receipts.execute_once(request, execute_with_contract)
 
 
 class ToolProviderHTTPServer(ThreadingHTTPServer):
@@ -436,6 +924,7 @@ def create_provider_server(
     signing_keys: dict[str, bytes] | None = None,
     active_key_id: str = "default",
     audit_path: str | Path | None = None,
+    research_fixture_db_path: str | Path | None = None,
 ) -> ToolProviderHTTPServer:
     if host != "127.0.0.1":
         raise ValueError("The mock provider only binds to loopback.")
@@ -449,7 +938,7 @@ def create_provider_server(
     KeyRingLifecycle(db_path, AuditLog(str(resolved_audit_path)), component="provider").observe(
         verifier.key_fingerprints, active_key_id
     )
-    service = ToolProviderService(verifier)
+    service = ToolProviderService(verifier, research_fixture_db_path=research_fixture_db_path)
     return ToolProviderHTTPServer((host, port), service)
 
 
@@ -575,6 +1064,7 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8766)
     parser.add_argument("--db", default=".custos-data/provider-replay.sqlite3")
     parser.add_argument("--audit", default=None, help="Provider key-lifecycle audit JSONL path")
+    parser.add_argument("--research-fixture-db", default=None, help="Local synthetic SQLite fixture path; runtime reads are read-only")
     args = parser.parse_args()
     active_key_id = os.environ.get("CUSTOS_ACTIVE_DISPATCH_KEY_ID", "default")
     raw_key_ring = os.environ.get("CUSTOS_DISPATCH_KEYS", "")
@@ -603,6 +1093,7 @@ def main() -> None:
         server = create_provider_server(
             db_path=args.db, host=args.host, port=args.port,
             signing_keys=key_ring, active_key_id=active_key_id, audit_path=args.audit,
+            research_fixture_db_path=args.research_fixture_db,
         )
     else:
         try:
@@ -614,6 +1105,7 @@ def main() -> None:
         server = create_provider_server(
             key, db_path=args.db, host=args.host, port=args.port,
             active_key_id=active_key_id, audit_path=args.audit,
+            research_fixture_db_path=args.research_fixture_db,
         )
     print(f"Custos mock tool provider listening on {args.host}:{args.port}", flush=True)
     try:

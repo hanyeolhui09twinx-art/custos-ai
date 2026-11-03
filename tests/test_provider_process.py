@@ -19,8 +19,9 @@ from custos_gateway import (
     ActionRequest, ApprovalStore, CustosGateway, DispatchAuthority, DispatchOutcomeUnknown,
 )
 from custos_provider import (
-    HttpToolProviderAdapter, RECEIPT_KEY_ID_HEADER, RECEIPT_SIGNATURE_HEADER,
-    receipt_lookup_signature,
+    HttpToolProviderAdapter, ProviderToolContract, ProviderToolRegistry, ReadOnlyResearchFixture,
+    RECEIPT_KEY_ID_HEADER, RECEIPT_SIGNATURE_HEADER, receipt_lookup_signature,
+    validate_json_schema,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -41,6 +42,7 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         cls.port = probe.getsockname()[1]
         probe.close()
         cls.db_path = cls.root / "provider-replay.sqlite3"
+        cls.research_fixture_db_path = cls.root / "research-fixture.sqlite3"
         cls.endpoint = f"http://127.0.0.1:{cls.port}/v1/dispatch"
         cls._start_provider()
 
@@ -73,6 +75,7 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
                 sys.executable, str(ROOT / "custos_provider.py"),
                 "--host", "127.0.0.1", "--port", str(cls.port),
                 "--db", str(cls.db_path),
+                "--research-fixture-db", str(cls.research_fixture_db_path),
             ],
             cwd=ROOT,
             env=env,
@@ -116,9 +119,10 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         )
 
     @staticmethod
-    def _permit(request: ActionRequest):
+    def _permit(request: ActionRequest, mode: str = "ALLOW"):
         authority = DispatchAuthority(signing_key=SIGNING_KEY)
-        return authority.issue(request, mode="ALLOW")
+        approval_id = "provider-registry-test-approval" if mode == "APPROVED" else None
+        return authority.issue(request, mode=mode, approval_id=approval_id)
 
     @staticmethod
     def _permit_with_key(request: ActionRequest, key_id: str, key: bytes):
@@ -169,7 +173,7 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         result = gateway.submit(request)
         self.assertEqual(result["decision"], "ALLOW")
         self.assertTrue(result["executed"])
-        self.assertEqual(result["result"]["status"], "simulated")
+        self.assertEqual(result["result"]["status"], "read_only")
 
     def test_human_approved_dispatch_uses_the_separate_provider(self) -> None:
         request = ActionRequest.from_payload(
@@ -177,7 +181,7 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
             {
                 "action": "send_email",
                 "resource": "company_email",
-                "parameters": {"to": "demo@example.test"},
+                "parameters": {"recipient": "demo@example.test", "subject": "Demo notice", "body": "Test-only email payload."},
                 "request_id": "provider-approved-001",
             },
         )
@@ -195,6 +199,7 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         self.assertEqual(result["decision"], "ALLOW")
         self.assertTrue(result["executed"])
         self.assertEqual(result["result"]["action"], "send_email")
+        self.assertEqual(result["result"]["contract_version"], "1.0.0")
 
     def test_approved_gateway_reconciles_a_lost_provider_response(self) -> None:
         request = ActionRequest.from_payload(
@@ -202,7 +207,7 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
             {
                 "action": "send_email",
                 "resource": "company_email",
-                "parameters": {"to": "reconcile@example.test"},
+                "parameters": {"recipient": "reconcile@example.test", "subject": "Reconciliation notice", "body": "Test-only reconciliation payload."},
                 "request_id": "approved-reconcile-001",
             },
         )
@@ -455,6 +460,270 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
             self._stop_provider()
             self._start_provider(signing_keys=KEY_RING, active_key_id="default")
 
+    def test_provider_reads_synthetic_records_with_parameterized_read_only_queries(self) -> None:
+        request = ActionRequest.from_payload(
+            "research_agent",
+            {
+                "action": "read_database",
+                "resource": "research_db",
+                "parameters": {"query": "current market research"},
+                "request_id": "provider-fixture-read-001",
+            },
+        )
+        status, body = self._post({
+            "request": request.to_dict(),
+            "permit": self._permit(request).__dict__,
+        })
+        self.assertEqual(status, 200)
+        result = body["result"]
+        self.assertEqual(result["status"], "read_only")
+        self.assertEqual(result["storage"], "local_synthetic_sqlite_fixture")
+        self.assertEqual(result["row_count"], 1)
+        self.assertEqual(result["records"][0]["id"], "market-001")
+        self.assertEqual(result["records"][0]["source"], "synthetic-fixture")
+        self.assertEqual(result["contract_version"], "1.0.0")
+
+        # A SQL-shaped query remains plain bound text and cannot turn the WHERE
+        # clause into a tautology or expose the remaining fixture rows.
+        injection = ActionRequest.from_payload(
+            "research_agent",
+            {
+                "action": "read_database",
+                "resource": "research_db",
+                "parameters": {"query": "market%' OR 1=1 --"},
+                "request_id": "provider-fixture-injection-001",
+            },
+        )
+        injected_status, injected_body = self._post({
+            "request": injection.to_dict(),
+            "permit": self._permit(injection).__dict__,
+        })
+        self.assertEqual(injected_status, 200)
+        self.assertEqual(injected_body["result"]["records"], [])
+        with sqlite3.connect(self.research_fixture_db_path) as connection:
+            total = connection.execute("SELECT COUNT(*) FROM research_records").fetchone()[0]
+        self.assertEqual(total, 3)
+
+    def test_provider_fixture_runtime_connection_rejects_writes(self) -> None:
+        fixture = ReadOnlyResearchFixture(self.research_fixture_db_path)
+        connection = fixture._connect_readonly()
+        try:
+            with self.assertRaises(sqlite3.OperationalError):
+                connection.execute(
+                    "INSERT INTO research_records (id, title, content, source) VALUES (?, ?, ?, ?)",
+                    ("runtime-write", "Injected", "Must not persist", "test"),
+                )
+            self.assertTrue(connection.execute("PRAGMA query_only").fetchone()[0])
+        finally:
+            connection.close()
+
+    def test_provider_contract_rejects_legacy_email_shape_and_versions_valid_results(self) -> None:
+        valid = ActionRequest.from_payload(
+            "research_agent",
+            {
+                "action": "send_email",
+                "resource": "company_email",
+                "parameters": {
+                    "recipient": "contract@example.test",
+                    "subject": "Contract test",
+                    "body": "This email is never sent.",
+                },
+                "request_id": "provider-contract-email-valid-001",
+            },
+        )
+        valid_status, valid_body = self._post({
+            "request": valid.to_dict(),
+            "permit": self._permit(valid, mode="APPROVED").__dict__,
+        })
+        self.assertEqual(valid_status, 200)
+        self.assertEqual(valid_body["result"]["status"], "simulated")
+        self.assertEqual(valid_body["result"]["contract_version"], "1.0.0")
+
+        legacy = ActionRequest.from_payload(
+            "research_agent",
+            {
+                "action": "send_email",
+                "resource": "company_email",
+                "parameters": {"to": "legacy@example.test"},
+                "request_id": "provider-contract-email-legacy-001",
+            },
+        )
+        legacy_status, _ = self._post({
+            "request": legacy.to_dict(),
+            "permit": self._permit(legacy, mode="APPROVED").__dict__,
+        })
+        self.assertEqual(legacy_status, 400)
+        receipt_status, _ = self._get_receipt(legacy.agent_id, legacy.request_id)
+        self.assertEqual(receipt_status, 404)
+
+    def test_provider_json_schema_patterns_reject_whitespace_and_email_spoofing(self) -> None:
+        registry = ProviderToolRegistry()
+        catalog = registry.to_catalog_document()
+        research_schema = catalog["contracts"][0]["input_schema"]
+        email_schema = catalog["contracts"][1]["input_schema"]
+
+        self.assertEqual(research_schema["properties"]["query"]["pattern"], r"\S")
+        self.assertEqual(email_schema["properties"]["subject"]["pattern"], r"\S")
+
+        for query in (" ", "   ", "\t\n"):
+            with self.subTest(query=repr(query)):
+                with self.assertRaises(ValueError):
+                    validate_json_schema({"query": query}, research_schema)
+
+        for recipient in ("name @example.test", "name@ example.test", "name\nBcc:evil@example.test"):
+            with self.subTest(recipient=repr(recipient)):
+                with self.assertRaises(ValueError):
+                    validate_json_schema(
+                        {
+                            "recipient": recipient,
+                            "subject": "A bounded subject",
+                            "body": "A bounded body",
+                        },
+                        email_schema,
+                    )
+
+        validate_json_schema(
+            {
+                "recipient": "research@example.test",
+                "subject": "A bounded subject",
+                "body": "A bounded body",
+            },
+            email_schema,
+        )
+
+    def test_provider_registry_fails_closed_on_unsupported_or_malformed_schema_definitions(self) -> None:
+        base = ProviderToolRegistry().to_catalog_document()["contracts"][0]
+        mutations = [
+            ("unknown keyword", lambda schema: schema["properties"]["query"].update({"contentEncoding": "base64"})),
+            ("unsupported format", lambda schema: schema["properties"]["query"].update({"format": "uri"})),
+            ("invalid pattern", lambda schema: schema["properties"]["query"].update({"pattern": "["})),
+            ("unsupported type", lambda schema: schema["properties"]["query"].update({"type": "number"})),
+            ("inconsistent bounds", lambda schema: schema["properties"]["query"].update({"minLength": 180, "maxLength": 160})),
+        ]
+        for index, (label, mutate) in enumerate(mutations, start=1):
+            with self.subTest(schema_error=label):
+                input_schema = json.loads(json.dumps(base["input_schema"]))
+                output_schema = json.loads(json.dumps(base["output_schema"]))
+                mutate(input_schema)
+                contract = ProviderToolContract(
+                    version="1.0.0",
+                    required_mode="ALLOW",
+                    input_kind="research_query_v1",
+                    input_schema=input_schema,
+                    output_schema=output_schema,
+                )
+                with self.assertRaises(ValueError):
+                    ProviderToolRegistry(bindings={
+                        ("research_agent", "read_database", f"research_db_{index}"): contract,
+                    })
+
+    def test_provider_contract_catalog_matches_the_runtime_registry(self) -> None:
+        catalog_path = ROOT / ProviderToolRegistry.CATALOG_RELATIVE_PATH
+        with catalog_path.open("r", encoding="utf-8") as handle:
+            published_catalog = json.load(handle)
+        registry = ProviderToolRegistry()
+        self.assertEqual(registry.to_catalog_document(), published_catalog)
+        self.assertEqual(published_catalog["schema_dialect"], ProviderToolRegistry.SCHEMA_DIALECT)
+        self.assertEqual(published_catalog["catalog_version"], "1.0.0")
+        self.assertEqual(len(published_catalog["contracts"]), 2)
+        for contract in published_catalog["contracts"]:
+            self.assertEqual(contract["contract_version"], "1.0.0")
+            self.assertEqual(contract["input_schema"]["$schema"], ProviderToolRegistry.SCHEMA_DIALECT)
+            self.assertEqual(contract["output_schema"]["$schema"], ProviderToolRegistry.SCHEMA_DIALECT)
+            self.assertFalse(contract["input_schema"]["additionalProperties"])
+            self.assertFalse(contract["output_schema"]["additionalProperties"])
+
+    def test_provider_contract_validates_email_address_and_semver(self) -> None:
+        for index, recipient in enumerate(("not-an-email", "bad address@example.test", "x@example.test\nBcc:evil@example.test"), start=1):
+            with self.subTest(recipient=recipient):
+                request = ActionRequest.from_payload(
+                    "research_agent",
+                    {
+                        "action": "send_email",
+                        "resource": "company_email",
+                        "parameters": {
+                            "recipient": recipient,
+                            "subject": "Contract validation",
+                            "body": "Must be rejected before a receipt is claimed.",
+                        },
+                        "request_id": f"provider-contract-bad-email-{index:03d}",
+                    },
+                )
+                status, _ = self._post({
+                    "request": request.to_dict(),
+                    "permit": self._permit(request, mode="APPROVED").__dict__,
+                })
+                self.assertEqual(status, 400)
+                receipt_status, _ = self._get_receipt(request.agent_id, request.request_id)
+                self.assertEqual(receipt_status, 404)
+
+        with self.assertRaisesRegex(ValueError, "semantic version"):
+            ProviderToolRegistry(bindings={
+                ("research_agent", "read_database", "research_db"): ProviderToolContract(
+                    version="version-one",
+                    required_mode="ALLOW",
+                    input_kind="research_query_v1",
+                    input_schema={"$schema": ProviderToolRegistry.SCHEMA_DIALECT, "type": "object"},
+                    output_schema={"$schema": ProviderToolRegistry.SCHEMA_DIALECT, "type": "object"},
+                )
+            })
+
+    def test_provider_rejects_invalid_research_schema_before_claiming_execution(self) -> None:
+        request = ActionRequest.from_payload(
+            "research_agent",
+            {
+                "action": "read_database",
+                "resource": "research_db",
+                "parameters": {"query": "market", "limit": 100},
+                "request_id": "provider-fixture-extra-param-001",
+            },
+        )
+        status, body = self._post({
+            "request": request.to_dict(),
+            "permit": self._permit(request).__dict__,
+        })
+        self.assertEqual(status, 400)
+        receipt_status, _ = self._get_receipt(request.agent_id, request.request_id)
+        self.assertEqual(receipt_status, 404)
+
+    def test_provider_registry_denies_unregistered_bindings_and_wrong_permit_modes(self) -> None:
+        cases = [
+            ("research_agent", "send_email", "company_email", "ALLOW"),
+            ("research_agent", "read_database", "research_db", "APPROVED"),
+            ("research_agent", "read_database", "payroll_db", "ALLOW"),
+            ("unregistered_agent", "read_database", "research_db", "ALLOW"),
+            ("research_agent", "delete_audit_log", "audit_log", "ALLOW"),
+        ]
+        for index, (agent_id, action, resource, mode) in enumerate(cases, start=1):
+            with self.subTest(agent_id=agent_id, action=action, resource=resource, mode=mode):
+                if action == "read_database":
+                    parameters = {"query": "bounded-provider-test"}
+                elif action == "send_email":
+                    parameters = {
+                        "recipient": "denied@example.test",
+                        "subject": "Denied request",
+                        "body": "This must not execute.",
+                    }
+                else:
+                    parameters = {}
+                request = ActionRequest.from_payload(
+                    agent_id,
+                    {
+                        "action": action,
+                        "resource": resource,
+                        "parameters": parameters,
+                        "request_id": f"provider-registry-deny-{index:03d}",
+                    },
+                )
+                status, body = self._post({
+                    "request": request.to_dict(),
+                    "permit": self._permit(request, mode=mode).__dict__,
+                })
+                self.assertEqual(status, 403)
+                self.assertEqual(body.get("code"), "dispatch_denied")
+                receipt_status, _ = self._get_receipt(agent_id, request.request_id)
+                self.assertEqual(receipt_status, 404)
+
     def test_provider_rejects_missing_forged_and_request_substituted_permits(self) -> None:
         request = self._request("provider-invalid-001")
         self.assertEqual(self._post({"request": request.to_dict()})[0], 403)
@@ -625,7 +894,7 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
             {
                 "action": "send_email",
                 "resource": "company_email",
-                "parameters": {"to": "pending-recovery@example.test"},
+                "parameters": {"recipient": "pending-recovery@example.test", "subject": "Pending recovery", "body": "Test-only pending recovery payload."},
                 "request_id": "gateway-restart-pending-approval-001",
             },
         )
@@ -662,7 +931,7 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
             {
                 "action": "send_email",
                 "resource": "company_email",
-                "parameters": {"to": "approved-recovery@example.test"},
+                "parameters": {"recipient": "approved-recovery@example.test", "subject": "Approved recovery", "body": "Test-only approved recovery payload."},
                 "request_id": "gateway-restart-approved-execution-001",
             },
         )

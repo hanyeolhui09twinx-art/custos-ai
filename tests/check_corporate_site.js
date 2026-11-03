@@ -6,7 +6,7 @@ const root = path.resolve(__dirname, "..");
 const site = path.join(root, "simulation-studio");
 const corporatePages = [
   "index.html", "platform.html", "technology.html", "security.html",
-  "research.html", "company.html", "contact.html", "privacy.html", "terms.html", "updates.html", "developers.html", "404.html"
+  "research.html", "mission.html", "partnerships.html", "media.html", "company.html", "contact.html", "privacy.html", "terms.html", "updates.html", "developers.html", "404.html"
 ];
 const toolPages = ["lab.html", "local-console.html", "security-ops.html"];
 const allPages = [...corporatePages, ...toolPages];
@@ -131,6 +131,12 @@ const home = fs.readFileSync(path.join(site, "index.html"), "utf8");
 if (!home.includes("TARGET ARCHITECTURE") || !home.includes("the current Python execution adapter is a mock")) {
   throw new Error("Homepage architecture diagram must be labeled as a conceptual target, not live enforcement.");
 }
+if ((home.match(/THE CUSTOS MISSION/g) || []).length !== 1) {
+  throw new Error("Homepage must contain exactly one primary mission section.");
+}
+if ((home.match(/INSTITUTIONAL RELATIONSHIPS/g) || []).length !== 1) {
+  throw new Error("Homepage must contain exactly one institutional partnerships section.");
+}
 if (!home.includes('class="flow-routing"') || !home.includes("CONDITIONAL ROUTING")) {
   throw new Error("Homepage architecture must show conditional policy routing.");
 }
@@ -199,15 +205,15 @@ if (!developerDocs.includes('class="walkthrough-steps"') || !css.includes(".prot
   throw new Error("The product explanation UI styles are missing.");
 }
 
-for (const page of ["platform.html", "technology.html", "security.html", "research.html", "company.html", "contact.html", "privacy.html", "terms.html", "updates.html", "developers.html", "lab.html", "local-console.html", "security-ops.html"]) {
+for (const page of ["platform.html", "technology.html", "security.html", "research.html", "mission.html", "partnerships.html", "media.html", "company.html", "contact.html", "privacy.html", "terms.html", "updates.html", "developers.html", "lab.html", "local-console.html", "security-ops.html"]) {
   if (!home.includes("./" + page)) throw new Error("Homepage is missing navigation to " + page);
 }
 
 const updates = fs.readFileSync(path.join(site, "updates.html"), "utf8");
-for (const phrase of ["DAY 001", "DAY 002", "DAY 003", "DAY 004", "DAY 005", "DAY 006", "DAY 007", "DAY 008", "DAY 009", "DAY 010", "DAY 011", "DAY 012", "DAY 013", "DAY 014", "DAY 015", "67 TESTS PASS", "NOT VERIFIED", "mock execution adapter", "real-agent bypass resistance"]) {
+for (const phrase of ["DAY 001", "DAY 002", "DAY 003", "DAY 004", "DAY 005", "DAY 006", "DAY 007", "DAY 008", "DAY 009", "DAY 010", "DAY 011", "DAY 012", "DAY 013", "DAY 014", "DAY 015", "DAY 016", "DAY 019", "DAY 020", "DAY 021", "DAY 022", "DAY 023", "86 RUN / 83 PASS / 3 SKIP", "NOT VERIFIED", "email remains mock-only", "real-agent bypass resistance"]) {
   if (!updates.toLowerCase().includes(phrase.toLowerCase())) throw new Error("Updates page is missing factual status item: " + phrase);
 }
-for (const log of ["day-001.md", "day-002.md", "day-003.md", "day-004.md", "day-005.md", "day-006.md", "day-007.md", "day-008.md", "day-009.md", "day-010.md", "day-011.md", "day-012.md", "day-013.md", "day-014.md", "day-015.md"]) {
+for (const log of ["day-001.md", "day-002.md", "day-003.md", "day-004.md", "day-005.md", "day-006.md", "day-007.md", "day-008.md", "day-009.md", "day-010.md", "day-011.md", "day-012.md", "day-013.md", "day-014.md", "day-015.md", "day-019.md", "day-020.md", "day-021.md", "day-022.md", "day-023.md"]) {
   if (!updates.includes(log)) throw new Error("Updates page is missing the source development log: " + log);
 }
 
@@ -313,7 +319,7 @@ if (!developerDocs.includes("BLOCK") || !developerDocs.includes("HTTP 200")) thr
 for (const phrase of ["custos_provider.py", "CUSTOS_TOOL_PROVIDER_URL", "CUSTOS_PROVIDER_DB", "CUSTOS_PROVIDER_AUDIT_LOG", "CUSTOS_DISPATCH_KEYS", "CUSTOS_ACTIVE_DISPATCH_KEY_ID", "CUSTOS_DISPATCH_SIGNING_KEY", "Manual key rotation sequence", "Security Operations", "same trusted machine", "OS sandboxing"]) {
   if (!developerDocs.includes(phrase)) throw new Error("Developer Docs must disclose provider-process setup: " + phrase);
 }
-for (const phrase of ["/v1/requests", "/v1/approvals", "request_id", "research_db", "mock execution adapter", "Do not enter production credentials"]) {
+for (const phrase of ["/v1/requests", "/v1/approvals", "request_id", "research_db", "mockexecutionadapter", "provider-tool-contracts.v1.0.0.json", "provider-tool-contracts.baseline.v1.0.0.json", "Do not enter production credentials"]) {
   if (!developerDocs.toLowerCase().includes(phrase.toLowerCase())) throw new Error("Developer Docs is missing an implementation detail: " + phrase);
 }
 if (!css.includes(".reveal{opacity:1;transform:none}") || !css.includes(".js-motion .reveal{opacity:0")) {

@@ -165,3 +165,59 @@
 @media(max-width:460px){.flow-outcomes{grid-template-columns:1fr}.flow-outcome{display:grid;grid-template-columns:minmax(112px,.65fr) 1fr;align-items:center;gap:8px}.flow-outcome small{margin-top:0}}
 
 .flow-route-continue{margin-top:9px;padding-top:8px;border-top:1px dashed #526b73;color:#b8d1bb;text-align:center;font:7px var(--mono);letter-spacing:.06em}
+
+/* Human Agency Preservation corporate layer */
+.agency-band{background:var(--navy);color:#edf2ed;padding:88px 0}
+.agency-band .eyebrow{color:#9cb3b0}
+.agency-band h2{font:400 clamp(34px,4.8vw,58px)/1.08 var(--serif);letter-spacing:-.05em;max-width:1040px;margin:22px 0}
+.agency-band h2 em{font-style:normal;color:#f18a64}
+.agency-band p{max-width:780px;color:#b6c4c0;font-size:13px;line-height:1.95}
+.agency-soft{background:#e8ede8}
+.agency-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.agency-cards article{background:#fff;border:1px solid var(--line);padding:26px;min-height:190px}
+.agency-cards article>span{font:9px var(--mono);color:var(--accent-dark);letter-spacing:.12em}
+.agency-cards h3{font:400 27px/1.12 var(--serif);margin:22px 0 10px;letter-spacing:-.035em}
+.agency-cards p{font-size:11px;line-height:1.9;color:var(--muted);margin:0}
+.agency-cards a{display:inline-block;margin-top:14px;color:var(--accent-dark);font-size:10px;text-decoration:underline;text-underline-offset:4px}
+.agency-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border:1px solid var(--line);background:#fff}
+.agency-metrics>div{padding:20px;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+.agency-metrics>div:nth-child(3n){border-right:0}
+.agency-metrics>div:nth-last-child(-n+3){border-bottom:0}
+.agency-metrics strong{display:block;font:18px/1.3 var(--serif);color:var(--ink)}
+.agency-metrics span{display:block;margin-top:7px;color:var(--muted);font-size:10px;line-height:1.7}
+.agency-caveat{margin-top:18px;color:var(--muted);font-size:10px;line-height:1.9}
+.agency-note{display:grid;grid-template-columns:.55fr 1.45fr;gap:22px;padding:24px;background:#fff;border:1px solid var(--line)}
+.agency-note strong{font:10px var(--mono);color:var(--accent-dark);letter-spacing:.08em}
+.agency-note span{font-size:11px;line-height:1.95;color:var(--muted)}
+@media(max-width:760px){.agency-band{padding:62px 0}.agency-cards{grid-template-columns:1fr}.agency-metrics{grid-template-columns:1fr 1fr}.agency-metrics>div:nth-child(3n){border-right:1px solid var(--line)}.agency-metrics>div:nth-child(2n){border-right:0}.agency-metrics>div:nth-last-child(-n+3){border-bottom:1px solid var(--line)}.agency-metrics>div:nth-last-child(-n+2){border-bottom:0}.agency-note{grid-template-columns:1fr;gap:10px}}
+
+/* Tablet navigation: switch before the full desktop navigation becomes crowded. */
+@media(max-width:960px){
+ .nav{display:none}
+ .header-cta{display:none}
+ .menu-toggle{display:block}
+ .mobile-nav{position:absolute;top:82px;left:0;right:0;background:var(--bg);border-bottom:1px solid var(--line);padding:12px 18px 18px;box-shadow:0 20px 30px #12202a12}
+ .mobile-nav.open{display:grid;grid-template-columns:1fr 1fr;gap:0 15px}
+ .mobile-nav a{padding:12px 2px;border-bottom:1px solid var(--line);font-size:11px}
+}
+@media(max-width:760px){.mobile-nav{top:70px}}
+
+
+/* Narrow timeline: keep the content track inside the page container. */
+@media(max-width:460px){
+ .timeline{width:calc(100% - 8px);min-width:0}
+ .timeline-item{min-width:0;max-width:100%;overflow-wrap:anywhere}
+ .timeline-item strong{overflow-wrap:anywhere}
+}
+
+
+/* Responsive developer resource cards: long SDK tool identifiers must not widen grid tracks. */
+.resources-grid>.resource-card{min-width:0}
+.resources-grid>.resource-card h3,
+.resources-grid>.resource-card p{min-width:0;overflow-wrap:anywhere}
+@media(max-width:960px){
+ .resources-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:760px){
+ .resources-grid{grid-template-columns:1fr}
+}
