@@ -308,10 +308,112 @@ class ExecutionReceiptStore:
         return result
 
 
+SUPPORTED_JSON_SCHEMA_KEYWORDS = frozenset({
+    "$schema", "title", "description", "type", "required", "additionalProperties",
+    "properties", "minLength", "maxLength", "pattern", "format", "minimum",
+    "maximum", "minItems", "maxItems", "items", "const",
+})
+SUPPORTED_JSON_SCHEMA_TYPES = frozenset({"object", "string", "integer", "array"})
+
+
+def validate_schema_definition(schema: Any, path: str = "$schema", *, root: bool = False) -> None:
+    """Fail closed on schema keywords or shapes the local runtime does not implement."""
+    if not isinstance(schema, dict):
+        raise TypeError(f"{path} definition must be an object.")
+
+    unsupported = set(schema) - SUPPORTED_JSON_SCHEMA_KEYWORDS
+    if unsupported:
+        names = ", ".join(sorted(unsupported))
+        raise ValueError(f"{path} contains unsupported JSON Schema keyword(s): {names}.")
+
+    if root and schema.get("$schema") != ProviderToolRegistry.SCHEMA_DIALECT:
+        raise ValueError(f"{path} must declare JSON Schema Draft 2020-12.")
+
+    for metadata in ("$schema", "title", "description"):
+        if metadata in schema and not isinstance(schema[metadata], str):
+            raise TypeError(f"{path}.{metadata} must be a string.")
+
+    expected_type = schema.get("type")
+    if expected_type is not None and expected_type not in SUPPORTED_JSON_SCHEMA_TYPES:
+        raise ValueError(f"{path} uses unsupported JSON Schema type: {expected_type}.")
+
+    if expected_type is None and "const" not in schema:
+        raise ValueError(f"{path} must declare a supported type or a constant.")
+
+    if expected_type == "object":
+        properties = schema.get("properties", {})
+        required = schema.get("required", [])
+        if not isinstance(properties, dict):
+            raise TypeError(f"{path}.properties must be an object.")
+        if (
+            not isinstance(required, list)
+            or not all(isinstance(item, str) for item in required)
+            or len(required) != len(set(required))
+        ):
+            raise TypeError(f"{path}.required must be a unique list of strings.")
+        if not set(required).issubset(properties):
+            raise ValueError(f"{path}.required contains a field absent from properties.")
+
+        additional = schema.get("additionalProperties", True)
+        if not isinstance(additional, (bool, dict)):
+            raise TypeError(f"{path}.additionalProperties must be a boolean or a schema.")
+        if isinstance(additional, dict):
+            validate_schema_definition(additional, f"{path}.additionalProperties")
+
+        for key, child in properties.items():
+            if not isinstance(key, str):
+                raise TypeError(f"{path}.properties keys must be strings.")
+            validate_schema_definition(child, f"{path}.properties.{key}")
+
+    elif expected_type == "string":
+        for bound in ("minLength", "maxLength"):
+            if bound in schema and (
+                isinstance(schema[bound], bool)
+                or not isinstance(schema[bound], int)
+                or schema[bound] < 0
+            ):
+                raise TypeError(f"{path}.{bound} must be a non-negative integer.")
+        if schema.get("minLength", 0) > schema.get("maxLength", float("inf")):
+            raise ValueError(f"{path} has inconsistent string length bounds.")
+        if "pattern" in schema:
+            if not isinstance(schema["pattern"], str):
+                raise TypeError(f"{path}.pattern must be a string.")
+            try:
+                re.compile(schema["pattern"])
+            except re.error as exc:
+                raise ValueError(f"{path}.pattern is not a valid regular expression.") from exc
+        if "format" in schema and schema["format"] != "email":
+            raise ValueError(f"{path} uses unsupported JSON Schema format: {schema['format']}.")
+
+    elif expected_type == "integer":
+        for bound in ("minimum", "maximum"):
+            if bound in schema and (
+                isinstance(schema[bound], bool)
+                or not isinstance(schema[bound], (int, float))
+                or not math.isfinite(schema[bound])
+            ):
+                raise TypeError(f"{path}.{bound} must be a finite number.")
+        if schema.get("minimum", float("-inf")) > schema.get("maximum", float("inf")):
+            raise ValueError(f"{path} has inconsistent integer bounds.")
+
+    elif expected_type == "array":
+        for bound in ("minItems", "maxItems"):
+            if bound in schema and (
+                isinstance(schema[bound], bool)
+                or not isinstance(schema[bound], int)
+                or schema[bound] < 0
+            ):
+                raise TypeError(f"{path}.{bound} must be a non-negative integer.")
+        if schema.get("minItems", 0) > schema.get("maxItems", float("inf")):
+            raise ValueError(f"{path} has inconsistent array bounds.")
+        if not isinstance(schema.get("items"), dict):
+            raise TypeError(f"{path}.items must define an object schema.")
+        validate_schema_definition(schema["items"], f"{path}.items")
+
+
 def validate_json_schema(value: Any, schema: dict[str, Any], path: str = "$") -> None:
     """Validate the deliberately small JSON Schema subset used by Provider contracts."""
-    if not isinstance(schema, dict):
-        raise TypeError("Provider JSON Schema definition must be an object.")
+    validate_schema_definition(schema, path, root=path == "$")
 
     expected_type = schema.get("type")
     if expected_type == "object":
@@ -508,8 +610,8 @@ class ProviderToolRegistry:
                 raise ValueError("Provider contracts must contain input and output JSON Schemas.")
             if contract.input_schema.get("type") != "object" or contract.output_schema.get("type") != "object":
                 raise ValueError("Provider tool input and output schemas must be JSON objects.")
-            if contract.input_schema.get("$schema") != self.SCHEMA_DIALECT or contract.output_schema.get("$schema") != self.SCHEMA_DIALECT:
-                raise ValueError("Provider tool schemas must declare JSON Schema Draft 2020-12.")
+            validate_schema_definition(contract.input_schema, "$.input_schema", root=True)
+            validate_schema_definition(contract.output_schema, "$.output_schema", root=True)
             self._bindings[binding] = contract
 
         self._catalog_document = {

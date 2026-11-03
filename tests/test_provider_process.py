@@ -591,6 +591,32 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
             email_schema,
         )
 
+    def test_provider_registry_fails_closed_on_unsupported_or_malformed_schema_definitions(self) -> None:
+        base = ProviderToolRegistry().to_catalog_document()["contracts"][0]
+        mutations = [
+            ("unknown keyword", lambda schema: schema["properties"]["query"].update({"contentEncoding": "base64"})),
+            ("unsupported format", lambda schema: schema["properties"]["query"].update({"format": "uri"})),
+            ("invalid pattern", lambda schema: schema["properties"]["query"].update({"pattern": "["})),
+            ("unsupported type", lambda schema: schema["properties"]["query"].update({"type": "number"})),
+            ("inconsistent bounds", lambda schema: schema["properties"]["query"].update({"minLength": 180, "maxLength": 160})),
+        ]
+        for index, (label, mutate) in enumerate(mutations, start=1):
+            with self.subTest(schema_error=label):
+                input_schema = json.loads(json.dumps(base["input_schema"]))
+                output_schema = json.loads(json.dumps(base["output_schema"]))
+                mutate(input_schema)
+                contract = ProviderToolContract(
+                    version="1.0.0",
+                    required_mode="ALLOW",
+                    input_kind="research_query_v1",
+                    input_schema=input_schema,
+                    output_schema=output_schema,
+                )
+                with self.assertRaises(ValueError):
+                    ProviderToolRegistry(bindings={
+                        ("research_agent", "read_database", f"research_db_{index}"): contract,
+                    })
+
     def test_provider_contract_catalog_matches_the_runtime_registry(self) -> None:
         catalog_path = ROOT / ProviderToolRegistry.CATALOG_RELATIVE_PATH
         with catalog_path.open("r", encoding="utf-8") as handle:
