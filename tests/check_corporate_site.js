@@ -6,7 +6,7 @@ const root = path.resolve(__dirname, "..");
 const site = path.join(root, "simulation-studio");
 const corporatePages = [
   "index.html", "platform.html", "technology.html", "security.html",
-  "research.html", "company.html", "contact.html", "privacy.html", "terms.html", "updates.html", "developers.html", "404.html"
+  "research.html", "company.html", "engagement.html", "enterprise.html", "public-sector.html", "contact.html", "privacy.html", "terms.html", "updates.html", "developers.html", "404.html"
 ];
 const toolPages = ["lab.html", "local-console.html", "security-ops.html"];
 const allPages = [...corporatePages, ...toolPages];
@@ -199,8 +199,25 @@ if (!developerDocs.includes('class="walkthrough-steps"') || !css.includes(".prot
   throw new Error("The product explanation UI styles are missing.");
 }
 
-for (const page of ["platform.html", "technology.html", "security.html", "research.html", "company.html", "contact.html", "privacy.html", "terms.html", "updates.html", "developers.html", "lab.html", "local-console.html", "security-ops.html"]) {
+for (const page of ["platform.html", "technology.html", "security.html", "research.html", "company.html", "engagement.html", "enterprise.html", "public-sector.html", "contact.html", "privacy.html", "terms.html", "updates.html", "developers.html", "lab.html", "local-console.html", "security-ops.html"]) {
   if (!home.includes("./" + page)) throw new Error("Homepage is missing navigation to " + page);
+}
+
+
+for (const [file, required] of Object.entries({
+  "engagement.html": ["B2B / B2G", "PAID EVALUATION", "Statement of Work", "CURRENT COMMERCIAL STATUS", "customers, executed contracts, revenue"],
+  "enterprise.html": ["ENTERPRISE USE CASES", "CUSTOMER ONBOARDING", "RESPONSIBILITY", "ACCEPTANCE GATES", "direct-call paths", "research prototype"],
+  "public-sector.html": ["BOUNDED PUBLIC WORKFLOWS", "OUT OF INITIAL SCOPE", "PUBLIC AUTHORITY", "PROCUREMENT STATUS DISCLOSURE", "procurement registration"]
+})) {
+  const pageHtml = fs.readFileSync(path.join(site, file), "utf8");
+  for (const phrase of required) {
+    if (!pageHtml.toLowerCase().includes(phrase.toLowerCase())) {
+      throw new Error(file + ": missing customer-engagement disclosure: " + phrase);
+    }
+  }
+  if (!pageHtml.includes('data-nav="engagement"') || !pageHtml.includes('data-en="Engagement"')) {
+    throw new Error(file + ": missing bilingual customer-engagement navigation.");
+  }
 }
 
 const updates = fs.readFileSync(path.join(site, "updates.html"), "utf8");
@@ -352,7 +369,7 @@ for (const phrase of ["Simulation Lab", "Local Control Room", "commercial SaaS",
 const robots = fs.readFileSync(path.join(site, "robots.txt"), "utf8");
 if (!robots.includes("sitemap.xml")) throw new Error("robots.txt must reference the sitemap.");
 const sitemap = fs.readFileSync(path.join(site, "sitemap.xml"), "utf8");
-for (const page of ["platform.html", "technology.html", "security.html", "research.html", "company.html", "contact.html", "privacy.html", "terms.html", "updates.html", "developers.html"]) {
+for (const page of ["platform.html", "technology.html", "security.html", "research.html", "company.html", "engagement.html", "enterprise.html", "public-sector.html", "contact.html", "privacy.html", "terms.html", "updates.html", "developers.html"]) {
   if (!sitemap.includes("/" + page)) throw new Error("Sitemap is missing " + page);
 }
 console.log("Custos website validation passed: corporate pages, standalone tools, local links, bilingual controls, threat model, sitemap, and demo behavior.");
