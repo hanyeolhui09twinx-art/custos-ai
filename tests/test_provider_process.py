@@ -555,6 +555,22 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         receipt_status, _ = self._get_receipt(legacy.agent_id, legacy.request_id)
         self.assertEqual(receipt_status, 404)
 
+    def test_provider_contract_catalog_matches_the_runtime_registry(self) -> None:
+        catalog_path = ROOT / ProviderToolRegistry.CATALOG_RELATIVE_PATH
+        with catalog_path.open("r", encoding="utf-8") as handle:
+            published_catalog = json.load(handle)
+        registry = ProviderToolRegistry()
+        self.assertEqual(registry.to_catalog_document(), published_catalog)
+        self.assertEqual(published_catalog["schema_dialect"], ProviderToolRegistry.SCHEMA_DIALECT)
+        self.assertEqual(published_catalog["catalog_version"], "1.0.0")
+        self.assertEqual(len(published_catalog["contracts"]), 2)
+        for contract in published_catalog["contracts"]:
+            self.assertEqual(contract["contract_version"], "1.0.0")
+            self.assertEqual(contract["input_schema"]["$schema"], ProviderToolRegistry.SCHEMA_DIALECT)
+            self.assertEqual(contract["output_schema"]["$schema"], ProviderToolRegistry.SCHEMA_DIALECT)
+            self.assertFalse(contract["input_schema"]["additionalProperties"])
+            self.assertFalse(contract["output_schema"]["additionalProperties"])
+
     def test_provider_contract_validates_email_address_and_semver(self) -> None:
         for index, recipient in enumerate(("not-an-email", "bad address@example.test", "x@example.test\nBcc:evil@example.test"), start=1):
             with self.subTest(recipient=recipient):
@@ -585,8 +601,8 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
                     version="version-one",
                     required_mode="ALLOW",
                     input_kind="research_query_v1",
-                    parameter_fields=frozenset({"query"}),
-                    result_status="read_only",
+                    input_schema={"$schema": ProviderToolRegistry.SCHEMA_DIALECT, "type": "object"},
+                    output_schema={"$schema": ProviderToolRegistry.SCHEMA_DIALECT, "type": "object"},
                 )
             })
 

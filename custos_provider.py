@@ -308,48 +308,101 @@ class ExecutionReceiptStore:
         return result
 
 
+def validate_json_schema(value: Any, schema: dict[str, Any], path: str = "$") -> None:
+    """Validate the deliberately small JSON Schema subset used by Provider contracts."""
+    if not isinstance(schema, dict):
+        raise TypeError("Provider JSON Schema definition must be an object.")
+
+    expected_type = schema.get("type")
+    if expected_type == "object":
+        if not isinstance(value, dict):
+            raise ValueError(f"{path} must be an object.")
+        required = schema.get("required", [])
+        if not isinstance(required, list) or not all(isinstance(item, str) for item in required):
+            raise TypeError("JSON Schema required must be a list of strings.")
+        missing = set(required) - set(value)
+        if missing:
+            raise ValueError(f"{path} is missing required fields.")
+        properties = schema.get("properties", {})
+        if not isinstance(properties, dict):
+            raise TypeError("JSON Schema properties must be an object.")
+        if schema.get("additionalProperties") is False:
+            extra = set(value) - set(properties)
+            if extra:
+                raise ValueError(f"{path} contains unregistered fields.")
+        for key, item in value.items():
+            if key in properties:
+                validate_json_schema(item, properties[key], f"{path}.{key}")
+            elif isinstance(schema.get("additionalProperties"), dict):
+                validate_json_schema(item, schema["additionalProperties"], f"{path}.{key}")
+    elif expected_type == "string":
+        if not isinstance(value, str):
+            raise ValueError(f"{path} must be a string.")
+        if len(value) < schema.get("minLength", 0):
+            raise ValueError(f"{path} is shorter than the minimum length.")
+        if len(value) > schema.get("maxLength", float("inf")):
+            raise ValueError(f"{path} exceeds the maximum length.")
+        pattern = schema.get("pattern")
+        if pattern is not None and re.search(pattern, value) is None:
+            raise ValueError(f"{path} does not match its required pattern.")
+        if schema.get("format") == "email" and not re.fullmatch(r"[^@\\s]+@[^@\\s]+", value):
+            raise ValueError(f"{path} must use the email format.")
+    elif expected_type == "integer":
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError(f"{path} must be an integer.")
+        if value < schema.get("minimum", float("-inf")) or value > schema.get("maximum", float("inf")):
+            raise ValueError(f"{path} is outside the allowed integer range.")
+    elif expected_type == "array":
+        if not isinstance(value, list):
+            raise ValueError(f"{path} must be an array.")
+        if len(value) < schema.get("minItems", 0) or len(value) > schema.get("maxItems", float("inf")):
+            raise ValueError(f"{path} has an invalid number of items.")
+        item_schema = schema.get("items")
+        if not isinstance(item_schema, dict):
+            raise TypeError("JSON Schema array items must define an object schema.")
+        for index, item in enumerate(value):
+            validate_json_schema(item, item_schema, f"{path}[{index}]")
+    elif expected_type is not None:
+        raise ValueError(f"Unsupported JSON Schema type: {expected_type}")
+
+    if "const" in schema and value != schema["const"]:
+        raise ValueError(f"{path} does not match its required constant.")
+
+
 @dataclass(frozen=True)
 class ProviderToolContract:
-    """Versioned input/output contract owned and enforced by the Provider."""
+    """Versioned input/output contract whose JSON Schema is the source of truth."""
 
     version: str
     required_mode: str
     input_kind: str
-    parameter_fields: frozenset[str]
-    result_status: str
+    input_schema: dict[str, Any]
+    output_schema: dict[str, Any]
+
+    @property
+    def result_status(self) -> str:
+        status_schema = self.output_schema.get("properties", {}).get("status", {})
+        status = status_schema.get("const")
+        if not isinstance(status, str):
+            raise ValueError("Provider output schema must declare a constant status.")
+        return status
+
+    @property
+    def parameter_fields(self) -> frozenset[str]:
+        properties = self.input_schema.get("properties", {})
+        if not isinstance(properties, dict):
+            raise ValueError("Provider input schema must define object properties.")
+        return frozenset(properties)
 
     def validate_parameters(self, parameters: Any, research_fixture: "ReadOnlyResearchFixture") -> None:
-        if not isinstance(parameters, dict) or set(parameters) != set(self.parameter_fields):
-            raise ValueError("Provider tool parameters do not match the registered contract schema.")
-
+        validate_json_schema(parameters, self.input_schema, "$.parameters")
         if self.input_kind == "research_query_v1":
             research_fixture.validate_parameters(parameters)
-            return
-
-        if self.input_kind == "email_request_v1":
-            recipient = parameters.get("recipient")
-            subject = parameters.get("subject")
-            body = parameters.get("body")
-            if (
-                not isinstance(recipient, str)
-                or not recipient
-                or len(recipient) > 320
-                or "\r" in recipient
-                or "\n" in recipient
-                or not re.fullmatch(r"[^@\s]+@[^@\s]+", recipient)
-            ):
-                raise ValueError("Email contract recipient must be a bounded address.")
-            if not isinstance(subject, str) or not subject.strip() or len(subject) > 200:
-                raise ValueError("Email contract subject must contain 1 to 200 characters.")
-            if not isinstance(body, str) or not body.strip() or len(body) > 8000:
-                raise ValueError("Email contract body must contain 1 to 8000 characters.")
-            return
-
-        raise ValueError("Provider tool contract input kind is not supported.")
+        elif self.input_kind != "email_request_v1":
+            raise ValueError("Provider tool contract input kind is not supported.")
 
     def validate_result(self, request: ActionRequest, result: Any) -> dict[str, Any]:
-        if not isinstance(result, dict):
-            raise TypeError("Provider tool result must be a JSON object.")
+        validate_json_schema(result, self.output_schema, "$.result")
         common = {
             "agent_id": request.agent_id,
             "action": request.action,
@@ -361,65 +414,80 @@ class ProviderToolContract:
         for key, expected in common.items():
             if result.get(key) != expected:
                 raise TypeError("Provider tool result does not match its registered contract.")
-
         if self.input_kind == "research_query_v1":
-            expected_fields = set(common) | {"storage", "query", "row_count", "records"}
-            if set(result) != expected_fields:
-                raise TypeError("Research result fields do not match the registered contract.")
-            records = result.get("records")
-            row_count = result.get("row_count")
             if (
-                result.get("storage") != "local_synthetic_sqlite_fixture"
-                or result.get("query") != request.parameters["query"].strip()
-                or isinstance(row_count, bool)
-                or not isinstance(row_count, int)
-                or not isinstance(records, list)
-                or row_count != len(records)
-                or row_count > 5
+                result.get("query") != request.parameters["query"].strip()
+                or result.get("row_count") != len(result.get("records", []))
             ):
                 raise TypeError("Research result values do not match the registered contract.")
-            for record in records:
-                if (
-                    not isinstance(record, dict)
-                    or set(record) != {"id", "title", "content", "source"}
-                    or not all(isinstance(value, str) for value in record.values())
-                ):
-                    raise TypeError("Research result record does not match the registered contract.")
-            return result
+        return result
 
-        if self.input_kind == "email_request_v1":
-            if set(result) != set(common):
-                raise TypeError("Email result fields do not match the registered contract.")
-            return result
-
-        raise TypeError("Provider tool result kind is not supported.")
+    def to_document(
+        self,
+        agent_id: str,
+        action: str,
+        resource: str,
+    ) -> dict[str, Any]:
+        return {
+            "agent_id": agent_id,
+            "action": action,
+            "resource": resource,
+            "contract_version": self.version,
+            "required_permit_mode": self.required_mode,
+            "input_kind": self.input_kind,
+            "input_schema": self.input_schema,
+            "output_schema": self.output_schema,
+        }
 
 
 class ProviderToolRegistry:
-    """Provider-side deny-by-default registry of versioned tool contracts."""
+    """Provider-side deny-by-default registry loaded from the published schema catalog."""
 
-    DEFAULT_BINDINGS = {
-        ("research_agent", "read_database", "research_db"): ProviderToolContract(
-            version="1.0.0",
-            required_mode="ALLOW",
-            input_kind="research_query_v1",
-            parameter_fields=frozenset({"query"}),
-            result_status="read_only",
-        ),
-        ("research_agent", "send_email", "company_email"): ProviderToolContract(
-            version="1.0.0",
-            required_mode="APPROVED",
-            input_kind="email_request_v1",
-            parameter_fields=frozenset({"recipient", "subject", "body"}),
-            result_status="simulated",
-        ),
-    }
+    SCHEMA_DIALECT = "https://json-schema.org/draft/2020-12/schema"
+    CATALOG_RELATIVE_PATH = Path("contracts") / "provider-tool-contracts.v1.0.0.json"
 
     def __init__(
         self,
         bindings: dict[tuple[str, str, str], ProviderToolContract] | None = None,
+        catalog_path: str | Path | None = None,
     ) -> None:
-        configured = self.DEFAULT_BINDINGS if bindings is None else bindings
+        if bindings is None:
+            path = Path(catalog_path) if catalog_path is not None else Path(__file__).resolve().parent / self.CATALOG_RELATIVE_PATH
+            document = json.loads(path.read_text(encoding="utf-8"))
+            if (
+                not isinstance(document, dict)
+                or set(document) != {"catalog_version", "schema_dialect", "contracts"}
+                or document.get("schema_dialect") != self.SCHEMA_DIALECT
+                or not isinstance(document.get("contracts"), list)
+            ):
+                raise ValueError("Provider contract catalog metadata is invalid.")
+            if not re.fullmatch(r"\\d+\\.\\d+\\.\\d+", document["catalog_version"]):
+                raise ValueError("Provider catalog version must use semantic version notation.")
+            configured: dict[tuple[str, str, str], ProviderToolContract] = {}
+            for entry in document["contracts"]:
+                expected_fields = {
+                    "agent_id", "action", "resource", "contract_version",
+                    "required_permit_mode", "input_kind", "input_schema", "output_schema",
+                }
+                if not isinstance(entry, dict) or set(entry) != expected_fields:
+                    raise ValueError("Provider contract catalog entry has an invalid shape.")
+                binding = (entry["agent_id"], entry["action"], entry["resource"])
+                if binding in configured:
+                    raise ValueError("Provider contract catalog contains a duplicate binding.")
+                configured[binding] = ProviderToolContract(
+                    version=entry["contract_version"],
+                    required_mode=entry["required_permit_mode"],
+                    input_kind=entry["input_kind"],
+                    input_schema=entry["input_schema"],
+                    output_schema=entry["output_schema"],
+                )
+            self.catalog_version = document["catalog_version"]
+            self.schema_dialect = document["schema_dialect"]
+        else:
+            configured = bindings
+            self.catalog_version = "1.0.0"
+            self.schema_dialect = self.SCHEMA_DIALECT
+
         if not isinstance(configured, dict) or not configured:
             raise ValueError("Provider tool contracts must be a non-empty mapping.")
         self._bindings: dict[tuple[str, str, str], ProviderToolContract] = {}
@@ -434,9 +502,27 @@ class ProviderToolRegistry:
                 raise ValueError("Every Provider binding must contain a versioned tool contract.")
             if contract.required_mode not in {"ALLOW", "APPROVED"}:
                 raise ValueError("Provider contracts must require ALLOW or APPROVED permits.")
-            if not re.fullmatch(r"\d+\.\d+\.\d+", contract.version):
+            if not re.fullmatch(r"\\d+\\.\\d+\\.\\d+", contract.version):
                 raise ValueError("Provider contract versions must use semantic version notation.")
+            if not isinstance(contract.input_schema, dict) or not isinstance(contract.output_schema, dict):
+                raise ValueError("Provider contracts must contain input and output JSON Schemas.")
+            if contract.input_schema.get("type") != "object" or contract.output_schema.get("type") != "object":
+                raise ValueError("Provider tool input and output schemas must be JSON objects.")
+            if contract.input_schema.get("$schema") != self.SCHEMA_DIALECT or contract.output_schema.get("$schema") != self.SCHEMA_DIALECT:
+                raise ValueError("Provider tool schemas must declare JSON Schema Draft 2020-12.")
             self._bindings[binding] = contract
+
+        self._catalog_document = {
+            "catalog_version": self.catalog_version,
+            "schema_dialect": self.schema_dialect,
+            "contracts": [
+                contract.to_document(*binding)
+                for binding, contract in sorted(self._bindings.items())
+            ],
+        }
+
+    def to_catalog_document(self) -> dict[str, Any]:
+        return json.loads(json.dumps(self._catalog_document, ensure_ascii=False))
 
     def contract_for(self, request: ActionRequest) -> ProviderToolContract:
         binding = (request.agent_id, request.action, request.resource)
@@ -456,7 +542,6 @@ class ProviderToolRegistry:
             raise DispatchAuthorizationError(
                 "The signed permit mode does not satisfy the Provider tool contract."
             )
-
 
 class ReadOnlyResearchFixture:
     """Small synthetic SQLite dataset: initialized locally, queried read-only at runtime."""

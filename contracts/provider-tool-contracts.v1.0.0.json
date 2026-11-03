@@ -1,0 +1,182 @@
+{
+  "catalog_version": "1.0.0",
+  "schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+  "contracts": [
+    {
+      "agent_id": "research_agent",
+      "action": "read_database",
+      "resource": "research_db",
+      "contract_version": "1.0.0",
+      "required_permit_mode": "ALLOW",
+      "input_kind": "research_query_v1",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "Research Query v1",
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160,
+            "pattern": "\\\\S",
+            "description": "One bounded natural-language search query."
+          }
+        }
+      },
+      "output_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "Read-only Research Result v1",
+        "type": "object",
+        "required": [
+          "status",
+          "storage",
+          "resource",
+          "query",
+          "row_count",
+          "records",
+          "agent_id",
+          "action",
+          "request_id",
+          "contract_version"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "const": "read_only"
+          },
+          "storage": {
+            "const": "local_synthetic_sqlite_fixture"
+          },
+          "resource": {
+            "const": "research_db"
+          },
+          "query": {
+            "type": "string"
+          },
+          "row_count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 5
+          },
+          "records": {
+            "type": "array",
+            "maxItems": 5,
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "title",
+                "content",
+                "source"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "content": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "agent_id": {
+            "type": "string"
+          },
+          "action": {
+            "const": "read_database"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "contract_version": {
+            "const": "1.0.0"
+          }
+        }
+      }
+    },
+    {
+      "agent_id": "research_agent",
+      "action": "send_email",
+      "resource": "company_email",
+      "contract_version": "1.0.0",
+      "required_permit_mode": "APPROVED",
+      "input_kind": "email_request_v1",
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "Email Request v1",
+        "type": "object",
+        "required": [
+          "recipient",
+          "subject",
+          "body"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "recipient": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 320,
+            "description": "Address must not contain whitespace or header line breaks."
+          },
+          "subject": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "\\\\S"
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8000,
+            "pattern": "\\\\S"
+          }
+        }
+      },
+      "output_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "Simulated Email Result v1",
+        "type": "object",
+        "required": [
+          "status",
+          "agent_id",
+          "action",
+          "resource",
+          "request_id",
+          "contract_version"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "const": "simulated"
+          },
+          "agent_id": {
+            "type": "string"
+          },
+          "action": {
+            "const": "send_email"
+          },
+          "resource": {
+            "const": "company_email"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "contract_version": {
+            "const": "1.0.0"
+          }
+        }
+      }
+    }
+  ]
+}
