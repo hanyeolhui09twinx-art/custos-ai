@@ -556,7 +556,7 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         self.assertEqual(receipt_status, 404)
 
     def test_provider_contract_validates_email_address_and_semver(self) -> None:
-        for index, recipient in enumerate(("not-an-email", "bad address@example.test", "x@example.test\\nBcc:evil@example.test"), start=1):
+        for index, recipient in enumerate(("not-an-email", "bad address@example.test", "x@example.test\nBcc:evil@example.test"), start=1):
             with self.subTest(recipient=recipient):
                 request = ActionRequest.from_payload(
                     "research_agent",
