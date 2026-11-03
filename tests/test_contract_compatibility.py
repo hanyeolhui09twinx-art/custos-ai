@@ -11,7 +11,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE_PATH = ROOT / "contracts" / "compatibility" / "provider-tool-contracts.baseline.v1.0.0.json"
 CURRENT_PATH = ROOT / "contracts" / "provider-tool-contracts.v1.0.0.json"
-SEMVER_RE = re.compile(r"^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$")
+SEMVER_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 
 
 def _version(value: Any, label: str) -> tuple[int, int, int]:
