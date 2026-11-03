@@ -15,7 +15,27 @@
 <script defer src="./corporate.js"></script>
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'none'; base-uri 'self'; object-src 'none'; form-action 'self'">
 <title>Custos AI — Independent AI Control</title>
-</head>
+
+<style>
+.business-section{background:#f2f4f0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.business-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:26px}
+.business-card{padding:25px;background:#fbfcfa;border:1px solid var(--line);min-height:245px;display:flex;flex-direction:column}
+.business-index{font:9px var(--mono);letter-spacing:.12em;color:var(--accent-dark)}
+.business-card h3{font:500 24px var(--serif);color:var(--ink);margin:27px 0 10px;line-height:1.2}
+.business-card p{font-size:11px;line-height:1.85;color:var(--muted);margin:0 0 22px}
+.business-card a{margin-top:auto;font-size:10px;font-weight:700;color:var(--accent-dark);text-decoration:underline;text-underline-offset:4px}
+.business-note{display:grid;grid-template-columns:150px 1fr;gap:20px;margin-top:16px;padding:16px 18px;border-left:3px solid #9b7658;background:#e7ece6}
+.business-note>span{font:8px var(--mono);letter-spacing:.12em;color:#6d7a73}
+.business-note p{font-size:10px;line-height:1.8;color:#627069;margin:0}
+.platform-context{padding:26px 0 23px;background:#eef2ed;border-bottom:1px solid var(--line)}
+.platform-context-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.platform-context-grid article{padding:17px 19px;background:#f9fbf8;border:1px solid var(--line)}
+.platform-context-grid article>span{display:block;font:8px var(--mono);letter-spacing:.13em;color:var(--muted);margin-bottom:10px}
+.platform-context-grid strong{display:block;font:500 16px var(--serif);color:var(--ink)}
+.platform-context-grid p{font-size:10px;line-height:1.75;color:var(--muted);margin:8px 0 0}
+.platform-context-note{margin:13px 0 0;font-size:9px;line-height:1.75;color:var(--muted)}
+@media(max-width:760px){.business-cards,.platform-context-grid{grid-template-columns:1fr}.business-card{min-height:0}.business-card h3{margin-top:15px}.business-note{grid-template-columns:1fr;gap:7px}.platform-context-grid article{padding:15px}}
+</style></head>
 <body data-page="home">
 <a class="skip-link" href="#main-content" data-ko="본문으로 바로가기" data-en="Skip to main content">본문으로 바로가기</a>
 
@@ -31,7 +51,7 @@
    <a href="./technology.html" data-nav="technology" data-ko="기술" data-en="Technology">기술</a>
    <a href="./security.html" data-nav="security" data-ko="보안·신뢰" data-en="Security & Trust">보안·신뢰</a>
    <a href="./research.html" data-nav="research" data-ko="연구·자료" data-en="Research">연구·자료</a>
-   <a href="./company.html" data-nav="company" data-ko="프로젝트 소개" data-en="About">프로젝트 소개</a>
+   <a href="./company.html" data-nav="company" data-ko="회사 소개" data-en="About">회사 소개</g/a>
    <a href="./contact.html" data-nav="contact" data-ko="문의" data-en="Contact">문의</a>
   </nav>
   <div class="header-actions">
@@ -45,7 +65,7 @@
   <a href="./technology.html" data-ko="기술" data-en="Technology">기술</a>
   <a href="./security.html" data-ko="보안·신뢰" data-en="Security & Trust">보안·신뢰</a>
   <a href="./research.html" data-ko="연구·자료" data-en="Research">연구·자료</a>
-  <a href="./company.html" data-ko="프로젝트 소개" data-en="About">프로젝트 소개</a>
+  <a href="./company.html" data-ko="회사 소개" data-en="About">회사 소개</g/a>
   <a href="./contact.html" data-ko="문의" data-en="Contact">문의</a>
   <a href="./lab.html">Simulation Lab ↗</a>
   <a href="./local-console.html">Local Control Room ↗</a>
@@ -172,6 +192,42 @@
   <article class="usecase"><span class="num">03 / HIGH IMPACT</span><h3 data-ko="고위험 실행 통제" data-en="High-impact action control">고위험 실행 통제</h3><p data-ko="외부 발송·데이터 변경·시스템 설정처럼 되돌리기 어려운 행동의 승인 구조를 연구합니다." data-en="Study approval boundaries for external communication, data changes, and system configuration.">외부 발송·데이터 변경·시스템 설정처럼 되돌리기 어려운 행동의 승인 구조를 연구합니다.</p><span class="status">RESEARCH AREA</span></article>
  </div>
 </div></section>
+
+<section class="business-section section" aria-labelledby="business-intro-title">
+ <div class="container">
+  <div class="section-head reveal">
+   <div class="eyebrow" data-ko="회사와 고객" data-en="THE COMPANY & ITS CUSTOMERS">회사와 고객</div>
+   <div>
+    <h2 id="business-intro-title" data-ko="AI를 만드는 것에서 멈추지 않고,<br><em>AI의 실행 권한을 다루는 인프라를 만듭니다.</em>" data-en="Beyond building AI,<br><em>we build infrastructure for its authority to act.</em>">AI를 만드는 것에서 멈추지 않고,<br><em>AI의 실행 권한을 다루는 인프라를 만듭니다.</em></h2>
+    <p data-ko="Custos AI는 기업과 공공기관에서 사용하는 AI Agent의 실행 권한·정책·승인 경계를 위한 소프트웨어를 연구·개발하는 제품 중심 기술기업을 지향합니다. 고객마다 다른 시스템과 책임 구조에 맞춰 기술 평가와 통합 범위를 계약으로 정의합니다." data-en="Custos AI is being developed as a product-led technology company focused on software for agent execution authority, policy, and approval boundaries in enterprises and public institutions. Evaluation and integration are scoped contractually around each customer's systems and accountability model.">Custos AI는 기업과 공공기관에서 사용하는 AI Agent의 실행 권한·정책·승인 경계를 위한 소프트웨어를 연구·개발하는 제품 중심 기술기업을 지향합니다. 고객마다 다른 시스템과 책임 구조에 맞춰 기술 평가와 통합 범위를 계약으로 정의합니다.</p>
+   </div>
+  </div>
+  <div class="business-cards reveal">
+   <article class="business-card">
+    <span class="business-index">01 / COMPANY</span>
+    <h3>Custos AI</h3>
+    <p data-ko="핵심 소프트웨어와 통제 아키텍처를 연구·개발하고, 제품의 지식재산과 장기적인 기술 방향을 발전시키는 회사 정체성입니다." data-en="The company identity focused on developing the core software and control architecture, and advancing its intellectual property and long-term technical direction.">핵심 소프트웨어와 통제 아키텍처를 연구·개발하고, 제품의 지식재산과 장기적인 기술 방향을 발전시키는 회사 정체성입니다.</p>
+    <a href="./company.html" data-ko="회사 소개 보기 ↗" data-en="About the company ↗">회사 소개 보기 ↗</a>
+   </article>
+   <article class="business-card">
+    <span class="business-index">02 / CORE PRODUCT</span>
+    <h3>Custos Control Plane</h3>
+    <p data-ko="Agent가 도구에 요청한 행동을 정책과 권한에 따라 평가하고, 필요한 경우 사람의 검토를 연결하는 핵심 소프트웨어입니다." data-en="The core software that evaluates agent-requested actions against policy and authority, routing actions for human review when required.">Agent가 도구에 요청한 행동을 정책과 권한에 따라 평가하고, 필요한 경우 사람의 검토를 연결하는 핵심 소프트웨어입니다.</p>
+    <a href="./platform.html" data-ko="제품 구조 보기 ↗" data-en="Explore the product ↗">제품 구조 보기 ↗</a>
+   </article>
+   <article class="business-card">
+    <span class="business-index">03 / CUSTOMER MODEL</span>
+    <h3 data-ko="B2B / B2G" data-en="B2B / B2G">B2B / B2G</h3>
+    <p data-ko="기업·공공기관과 평가, 고객별 통합, 소프트웨어 라이선스, 공동 연구 및 기술 지원의 범위를 계약으로 정하는 사업 모델을 지향합니다." data-en="The intended model is to contract with enterprises and public institutions for evaluation, customer-specific integration, software licensing, joint research, and technical support.">기업·공공기관과 평가, 고객별 통합, 소프트웨어 라이선스, 공동 연구 및 기술 지원의 범위를 계약으로 정하는 사업 모델을 지향합니다.</p>
+    <a href="./company.html#main-content" data-ko="협력 방식과 한계 보기 ↗" data-en="Engagement model and limits ↗">협력 방식과 한계 보기 ↗</a>
+   </article>
+  </div>
+  <div class="business-note">
+   <span data-ko="사업 단계 안내" data-en="STAGE DISCLOSURE">사업 단계 안내</span>
+   <p data-ko="위 내용은 Custos가 지향하는 회사 및 사업 모델입니다. 현재 체결된 고객 계약, 매출, 상용 고객 배포 또는 운영 지원 SLA를 의미하지 않습니다. 현재 제품은 초기 연구 프로토타입이며, 실제 고객 시스템 연동은 별도 개발·검증 관문입니다." data-en="This describes the intended company and business model. It does not imply signed customer contracts, revenue, commercial deployments, or operational support SLAs. The current product remains an early research prototype; integration with real customer systems is a separate engineering and verification gate.">위 내용은 Custos가 지향하는 회사 및 사업 모델입니다. 현재 체결된 고객 계약, 매출, 상용 고객 배포 또는 운영 지원 SLA를 의미하지 않습니다. 현재 제품은 초기 연구 프로토타입이며, 실제 고객 시스템 연동은 별도 개발·검증 관문입니다.</p>
+  </div>
+ </div>
+</section>
 <section class="trust-band section"><div class="container trust-grid reveal">
  <div class="trust-copy"><div class="eyebrow" data-ko="신뢰는 검증 가능해야 합니다" data-en="TRUST MUST BE VERIFIABLE">신뢰는 검증 가능해야 합니다</div><h2 data-ko="보안에 대한 주장은<br><em>구현과 증거를 따라야 합니다.</em>" data-en="Security claims must follow<br><em>implementation and evidence.</em>">보안에 대한 주장은<br><em>구현과 증거를 따라야 합니다.</em></h2><p data-ko="현재 Custos는 연구용 프로토타입입니다. 로컬 API는 loopback 전용이며 모의 실행 어댑터를 사용합니다. 해시 연결 로그는 일반적인 변경을 탐지하지만 불변 저장소는 아닙니다. 아직 보장하지 못하는 사항도 공개합니다." data-en="Custos is a research prototype. Its local API is loopback-only and uses a mock execution adapter. The hash-chained log detects ordinary edits but is not immutable storage. We publish what is not yet guaranteed.">현재 Custos는 연구용 프로토타입입니다. 로컬 API는 loopback 전용이며 모의 실행 어댑터를 사용합니다. 해시 연결 로그는 일반적인 변경을 탐지하지만 불변 저장소는 아닙니다. 아직 보장하지 못하는 사항도 공개합니다.</p><a class="btn btn-dark" href="./security.html"><span data-ko="보안 경계와 한계" data-en="Security boundaries & limits">보안 경계와 한계</span><span class="arrow">↗</span></a></div>
  <div class="trust-list">
@@ -198,6 +254,6 @@
  <div class="footer-brand"><a class="brand" href="./index.html"><span class="brand-symbol"></span><span><span class="brand-word">CUSTOS</span><span class="brand-sub">INDEPENDENT AI CONTROL</span></span></a><p data-ko="자율형 AI 에이전트의 실행 권한을 독립적으로 검증하기 위한 초기 연구 프로젝트입니다." data-en="An early-stage research project exploring independent authorization for autonomous AI agents.">자율형 AI 에이전트의 실행 권한을 독립적으로 검증하기 위한 초기 연구 프로젝트입니다.</p></div>
  <div class="footer-col"><strong data-ko="플랫폼" data-en="PLATFORM">플랫폼</strong><a href="./platform.html">Custos Control Layer</a><a href="./technology.html" data-ko="기술 아키텍처" data-en="Technical Architecture">기술 아키텍처</a><a href="./developers.html" data-ko="개발자 문서" data-en="Developer Docs">개발자 문서</a><a href="./lab.html">Simulation Lab</a><a href="./local-console.html">Local Control Room</a><a href="./security-ops.html">Security Operations</a></div>
  <div class="footer-col"><strong data-ko="신뢰·자료" data-en="TRUST & RESOURCES">신뢰·자료</strong><a href="./security.html" data-ko="보안 및 신뢰" data-en="Security & Trust">보안 및 신뢰</a><a href="./research.html" data-ko="연구·개발 기록" data-en="Research & Development">연구·개발 기록</a><a href="https://github.com/hanyeolhui09twinx-art/custos-ai/blob/main/docs/THREAT_MODEL.md" target="_blank" rel="noopener noreferrer">Threat Model ↗</a><a href="./updates.html" data-ko="업데이트" data-en="Updates">업데이트</a><a href="./privacy.html" data-ko="개인정보 안내" data-en="Privacy Notice">개인정보 안내</a><a href="./terms.html" data-ko="이용 안내" data-en="Terms of Use">이용 안내</a></div>
- <div class="footer-col"><strong data-ko="프로젝트" data-en="PROJECT">프로젝트</strong><a href="./company.html" data-ko="프로젝트 소개" data-en="About Custos">프로젝트 소개</a><a href="./contact.html" data-ko="문의 및 협력" data-en="Contact & Collaboration">문의 및 협력</a><a href="https://github.com/hanyeolhui09twinx-art/custos-ai" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div>
+ <div class="footer-col"><strong data-ko="프로젝트" data-en="PROJECT">프로젝트</strong><a href="./company.html" data-ko="회사 소개" data-en="About Custos">회사 소개</g/a><a href="./contact.html" data-ko="문의 및 협력" data-en="Contact & Collaboration">문의 및 협력</a><a href="https://github.com/hanyeolhui09twinx-art/custos-ai" target="_blank" rel="noopener noreferrer">GitHub ↗</a></div>
 </div><div class="footer-bottom"><span>© 2026 CUSTOS AI · INDEPENDENT RESEARCH PROJECT</span><span class="footer-disclaimer" data-ko="현재 연구용 프로토타입입니다. 상용 운영 보안·규제·성능 인증을 의미하지 않습니다." data-en="Research prototype only. No production security, regulatory, or performance certification is claimed.">현재 연구용 프로토타입입니다. 상용 운영 보안·규제·성능 인증을 의미하지 않습니다.</span></div></div></footer>
 </body></html>
