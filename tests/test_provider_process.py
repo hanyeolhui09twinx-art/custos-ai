@@ -565,12 +565,12 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         self.assertEqual(research_schema["properties"]["query"]["pattern"], r"\S")
         self.assertEqual(email_schema["properties"]["subject"]["pattern"], r"\S")
 
-        for query in (" ", "   ", "\\t\\n"):
+        for query in (" ", "   ", "\t\n"):
             with self.subTest(query=repr(query)):
                 with self.assertRaises(ValueError):
                     validate_json_schema({"query": query}, research_schema)
 
-        for recipient in ("name @example.test", "name@ example.test", "name\\nBcc:evil@example.test"):
+        for recipient in ("name @example.test", "name@ example.test", "name\nBcc:evil@example.test"):
             with self.subTest(recipient=repr(recipient)):
                 with self.assertRaises(ValueError):
                     validate_json_schema(
