@@ -22,7 +22,7 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 160,
-            "pattern": "\\\\S",
+            "pattern": "\\S",
             "description": "One bounded natural-language search query."
           }
         }
@@ -133,13 +133,13 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 200,
-            "pattern": "\\\\S"
+            "pattern": "\\S"
           },
           "body": {
             "type": "string",
             "minLength": 1,
             "maxLength": 8000,
-            "pattern": "\\\\S"
+            "pattern": "\\S"
           }
         }
       },

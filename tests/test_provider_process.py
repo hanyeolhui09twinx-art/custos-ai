@@ -21,6 +21,7 @@ from custos_gateway import (
 from custos_provider import (
     HttpToolProviderAdapter, ProviderToolContract, ProviderToolRegistry, ReadOnlyResearchFixture,
     RECEIPT_KEY_ID_HEADER, RECEIPT_SIGNATURE_HEADER, receipt_lookup_signature,
+    validate_json_schema,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -554,6 +555,41 @@ class IsolatedToolProviderProcessTests(unittest.TestCase):
         self.assertEqual(legacy_status, 400)
         receipt_status, _ = self._get_receipt(legacy.agent_id, legacy.request_id)
         self.assertEqual(receipt_status, 404)
+
+    def test_provider_json_schema_patterns_reject_whitespace_and_email_spoofing(self) -> None:
+        registry = ProviderToolRegistry()
+        catalog = registry.to_catalog_document()
+        research_schema = catalog["contracts"][0]["input_schema"]
+        email_schema = catalog["contracts"][1]["input_schema"]
+
+        self.assertEqual(research_schema["properties"]["query"]["pattern"], r"\S")
+        self.assertEqual(email_schema["properties"]["subject"]["pattern"], r"\S")
+
+        for query in (" ", "   ", "\\t\\n"):
+            with self.subTest(query=repr(query)):
+                with self.assertRaises(ValueError):
+                    validate_json_schema({"query": query}, research_schema)
+
+        for recipient in ("name @example.test", "name@ example.test", "name\\nBcc:evil@example.test"):
+            with self.subTest(recipient=repr(recipient)):
+                with self.assertRaises(ValueError):
+                    validate_json_schema(
+                        {
+                            "recipient": recipient,
+                            "subject": "A bounded subject",
+                            "body": "A bounded body",
+                        },
+                        email_schema,
+                    )
+
+        validate_json_schema(
+            {
+                "recipient": "research@example.test",
+                "subject": "A bounded subject",
+                "body": "A bounded body",
+            },
+            email_schema,
+        )
 
     def test_provider_contract_catalog_matches_the_runtime_registry(self) -> None:
         catalog_path = ROOT / ProviderToolRegistry.CATALOG_RELATIVE_PATH

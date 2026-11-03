@@ -345,7 +345,7 @@ def validate_json_schema(value: Any, schema: dict[str, Any], path: str = "$") ->
         pattern = schema.get("pattern")
         if pattern is not None and re.search(pattern, value) is None:
             raise ValueError(f"{path} does not match its required pattern.")
-        if schema.get("format") == "email" and not re.fullmatch(r"[^@\\s]+@[^@\\s]+", value):
+        if schema.get("format") == "email" and not re.fullmatch(r"[^@\s]+@[^@\s]+", value):
             raise ValueError(f"{path} must use the email format.")
     elif expected_type == "integer":
         if isinstance(value, bool) or not isinstance(value, int):
@@ -461,7 +461,7 @@ class ProviderToolRegistry:
                 or not isinstance(document.get("contracts"), list)
             ):
                 raise ValueError("Provider contract catalog metadata is invalid.")
-            if not re.fullmatch(r"\\d+\\.\\d+\\.\\d+", document["catalog_version"]):
+            if not re.fullmatch(r"\d+\.\d+\.\d+", document["catalog_version"]):
                 raise ValueError("Provider catalog version must use semantic version notation.")
             configured: dict[tuple[str, str, str], ProviderToolContract] = {}
             for entry in document["contracts"]:
@@ -502,7 +502,7 @@ class ProviderToolRegistry:
                 raise ValueError("Every Provider binding must contain a versioned tool contract.")
             if contract.required_mode not in {"ALLOW", "APPROVED"}:
                 raise ValueError("Provider contracts must require ALLOW or APPROVED permits.")
-            if not re.fullmatch(r"\\d+\\.\\d+\\.\\d+", contract.version):
+            if not re.fullmatch(r"\d+\.\d+\.\d+", contract.version):
                 raise ValueError("Provider contract versions must use semantic version notation.")
             if not isinstance(contract.input_schema, dict) or not isinstance(contract.output_schema, dict):
                 raise ValueError("Provider contracts must contain input and output JSON Schemas.")
